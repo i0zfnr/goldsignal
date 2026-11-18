@@ -21,6 +21,10 @@ body { margin: 0; }
 .admin-grid h3 { margin: 0; font-size: 1rem; }
 .admin-chat { margin-top: 16px; }
 .admin-chat h3 { margin: 0 0 8px; font-size: 1rem; }
+.backend-log { list-style: none; margin: 0; padding: 0; }
+.backend-log li { border-top: 1px solid var(--line); padding: 10px 0; overflow-wrap: anywhere; }
+.backend-log-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.backend-log li p { margin: 4px 0 0; }
 .model-display { margin-block: 8px 4px; }
 .model-id { color: var(--gold); overflow-wrap: anywhere; }
 .admin-chat textarea { width: 100%; resize: vertical; padding: 9px; font: inherit; color: inherit; background: #121512; border: 1px solid #626e5e; border-radius: 4px; }

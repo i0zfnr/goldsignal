@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from goldsignal import alerts, chat, config, news, store, worker
+from goldsignal import alerts, chat, config, diagnostics, news, store, worker
 from goldsignal.api import app
 from goldsignal.access import password_hash
 from goldsignal.lifecycle import advance
@@ -24,11 +24,18 @@ def test_access_and_gemini_storage(db, monkeypatch):
     with TestClient(app) as operator, TestClient(app) as viewer:
         assert viewer.get("/api/dashboard").status_code == 401
         assert viewer.get("/api/admin/settings").status_code == 403
+        assert viewer.get("/api/admin/errors").status_code == 403
         login = operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
         assert login.status_code == 200 and "HttpOnly" in login.headers["set-cookie"]
         secret = operator.post("/api/admin/keys", json={"label": "Fixture viewer"}).json()["key"]
         assert viewer.post("/api/auth/viewer", json={"credential": secret}).status_code == 200
         assert viewer.get("/api/dashboard?frame=M1").json()["frame"] == "M1"
+        assert viewer.get("/api/admin/errors").status_code == 403
+        assert operator.get("/api/admin/errors").json() == {"entries": []}
+        diagnostics.record("Market worker", "Worker cycle failed.")
+        errors = operator.get("/api/admin/errors")
+        assert errors.headers["cache-control"] == "no-store"
+        assert errors.json()["entries"][0]["message"] == "Worker cycle failed."
         assert viewer.put("/api/admin/gemini", json={"enabled": True}).status_code == 403
         assert viewer.put("/api/admin/pause", json={"paused": True}).status_code == 403
         assert operator.put("/api/admin/pause", json={"paused": True}).json()["paused"]
@@ -133,6 +140,7 @@ def test_gemini_503_retries_only_while_entry_is_valid(db, monkeypatch):
     worker.process(Source(), 0, None, {}, 1)
     with store.transaction() as data:
         assert data.all("candidate")[0]["gemini_retry"]["failures"] == 1
+        assert data.recent("backend_log", 1)[0]["message"] == "Attempt 1 failed (HTTP 503). Retry scheduled."
         assert not data.all("signal")
     snapshot["now"] += 1
     worker.process(Source(), 0, None, {}, 2)
@@ -148,6 +156,9 @@ def test_gemini_503_retries_only_while_entry_is_valid(db, monkeypatch):
     with store.transaction() as data:
         assert len(calls) == data.get("ai_usage", "gemini")["count"] == 2
         assert len(data.all("signal")) == len(data.all("alert")) == 1
+        recovered = data.recent("backend_log", 1)[0]
+        assert recovered["level"] == "info"
+        assert recovered["message"] == "Retry returned a valid review (CONFIRM)."
 
 
 @pytest.fixture

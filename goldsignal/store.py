@@ -47,6 +47,16 @@ class Store:
     def items(self, kind):
         return self.conn.execute(select(records.c.id, records.c.payload).where(self.where(kind))).all()
 
+    def recent(self, kind, limit):
+        return list(self.conn.scalars(select(records.c.payload).where(self.where(kind))
+                                      .order_by(records.c.id.desc()).limit(limit)))
+
+    def prune(self, kind, keep):
+        cutoff = self.conn.scalar(select(records.c.id).where(self.where(kind))
+                                  .order_by(records.c.id.desc()).offset(keep - 1).limit(1))
+        if cutoff is not None:
+            self.conn.execute(records.delete().where(self.where(kind), records.c.id < cutoff))
+
     def put(self, kind, key, value):
         result = self.conn.execute(records.update().where(self.where(kind, key)).values(payload=value))
         if result.rowcount == 0:

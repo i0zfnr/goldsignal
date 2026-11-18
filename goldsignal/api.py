@@ -6,6 +6,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from fastapi.exceptions import RequestValidationError
@@ -14,8 +15,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
 from .news import manual_pause, restriction
 from .store import migrate, transaction
-from .access import identity, router
+from .access import admin, identity, router
 from .chat import router as chat_router
+from .diagnostics import record
 from .strategy import executable, gate
 
 
@@ -39,10 +41,26 @@ async def invalid_request(request, exc):
 
 @app.middleware("http")
 async def private_responses(request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/api/"):
-        response.headers["Cache-Control"] = "no-store"
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        route = getattr(request.scope.get("route"), "path", "/api")
+        await run_in_threadpool(record, "API", f"{request.method} {route} failed (HTTP 500).")
+        raise
+    if response.status_code >= 500:
+        route = getattr(request.scope.get("route"), "path", "/api")
+        await run_in_threadpool(record, "API", f"{request.method} {route} returned HTTP {response.status_code}.")
+    response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@app.get("/api/admin/errors")
+def backend_errors(request: Request):
+    admin(request)
+    with transaction() as store:
+        return {"entries": store.recent("backend_log", 50)}
 
 
 def get_id(request, response):

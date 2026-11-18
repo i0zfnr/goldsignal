@@ -15,6 +15,7 @@ from . import news
 from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, send_pending
 from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
+from .diagnostics import record
 from .lifecycle import advance
 from .market import MT5, Replay
 from .scalp import scalp_candidate
@@ -61,10 +62,11 @@ def model_review(candidate, snapshot, calendar):
         return result["decision"], result["reason"][:300]
     except Exception as exc:
         log.warning("Local model review failed: %s", exc)
+        record("Ollama review", "Local model review failed.")
         return "WAIT", "Local model review unavailable"
 
 
-def gemini_review(settings, candidate, snapshot, calendar):
+def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
     day = datetime.now(timezone.utc).date().isoformat()
     with transaction() as store:
         usage = store.get("ai_usage", "gemini", {})
@@ -106,15 +108,21 @@ def gemini_review(settings, candidate, snapshot, calendar):
         reason = result["reason"]
         if result["decision"] not in ("CONFIRM", "WAIT", "REJECT") or not isinstance(reason, str) or not reason.strip():
             raise ValueError("Invalid Gemini decision")
+        if retrying:
+            record("Gemini review", f"Retry returned a valid review ({result['decision']}).", level="info")
         return result["decision"], " ".join(reason.split()[:12])[:160]
     except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-        if isinstance(exc, httpx.TransportError) or exc.response.status_code in (500, 502, 503, 504):
-            log.warning("Gemini temporarily unavailable (%s)", type(exc).__name__)
-            raise GeminiTemporaryError from exc
-        log.warning("Gemini review unavailable (HTTP %s)", exc.response.status_code)
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        problem = f"HTTP {status}" if status is not None else "connection failed"
+        if status in (None, 500, 502, 503, 504):
+            log.warning("Gemini temporarily unavailable (%s)", problem)
+            raise GeminiTemporaryError(problem) from exc
+        log.warning("Gemini review unavailable (%s)", problem)
+        record("Gemini review", f"Review failed ({problem}).")
         return "WAIT", "Gemini review unavailable"
     except Exception as exc:
         log.warning("Gemini review unavailable (%s)", type(exc).__name__)
+        record("Gemini review", "Could not prepare or read a valid review.")
         return "WAIT", "Gemini review unavailable"
 
 
@@ -210,14 +218,16 @@ def process(source, step, cursor, calendar, revision):
         if (not stopped and (not model or (retry and now >= retry["after"])) and provider != "rules"
                 and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
             try:
-                model = (gemini_review(gemini, item, snapshot, calendar) if configured else
+                model = (gemini_review(gemini, item, snapshot, calendar, retrying=bool(retry)) if configured else
                          model_review(item, snapshot, calendar))
                 retry = None
-            except GeminiTemporaryError:
+            except GeminiTemporaryError as exc:
                 failures = retry["failures"] + 1 if retry else 1
                 clock = snapshot["now"] if DEMO else utc_now()
                 after = clock + GEMINI_RETRY_DELAYS[failures - 1] if failures <= len(GEMINI_RETRY_DELAYS) else None
                 retry = {"failures": failures, "after": after} if after is not None and after < item["expiry"] else None
+                outcome = "Retry scheduled." if retry else "No retry remains for this entry."
+                record("Gemini review", f"Attempt {failures} failed ({exc}). {outcome}")
                 model = ("WAIT", "Gemini temporarily unavailable. Retry scheduled." if retry else
                          "Gemini unavailable. No retry remains for this entry.")
             reviewed = True
@@ -299,6 +309,7 @@ def run():
                     push_job = background.submit(send_pending, snapshot["now"])
             except Exception:
                 log.exception("Worker cycle failed")
+                record("Market worker", "Worker cycle failed.")
                 with transaction() as store:
                     prior = store.get("state", "market", {})
                     clock = utc_now()

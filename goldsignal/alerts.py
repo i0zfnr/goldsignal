@@ -5,6 +5,7 @@ import os
 from pywebpush import WebPushException, webpush
 
 from .config import MODE, utc_now
+from .diagnostics import record
 from .news import manual_pause, restriction
 from .store import transaction
 from .strategy import gate
@@ -65,8 +66,11 @@ def send_pending(now):
                 alert["delivery"] = "queued" if transient and alert["attempts"] < 4 else "failed"
                 alert["retry_at"] = clock + 15 * 2 ** (alert["attempts"] - 1)
                 log.warning("Push %s returned HTTP %s", alert["id"], status)
+                problem = f"HTTP {status}" if status is not None else "connection failed"
+                record("Push delivery", f"Attempt {alert['attempts']} failed ({problem}).")
             except Exception:
                 log.exception("Push delivery failed for %s", alert["id"])
+                record("Push delivery", "Push delivery failed.")
                 alert["delivery"] = "failed"
         with transaction() as store:
             store.put("alert", alert["id"], alert)

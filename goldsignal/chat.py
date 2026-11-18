@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .access import MODEL, admin, encryption
+from .diagnostics import record
 from .store import transaction
 
 router = APIRouter()
@@ -33,6 +34,8 @@ def ask(key, turns):
             headers={"x-goog-api-key": key}, timeout=40,
             json={"contents": [{"role": turn.role, "parts": [{"text": turn.text}]} for turn in turns]},
         )
+        if response.status_code >= 400:
+            record("Gemini chat", f"Request failed (HTTP {response.status_code}).")
         if response.status_code in (400, 401, 403):
             return {"error": "Gemini rejected the request. Check your AI Studio key and project access."}
         if response.status_code == 404:
@@ -42,8 +45,13 @@ def ask(key, turns):
         response.raise_for_status()
         parts = response.json()["candidates"][0]["content"]["parts"]
         text = "\n".join(part["text"] for part in parts if part.get("text") and not part.get("thought"))
+        if not text:
+            record("Gemini chat", "Gemini returned an empty response.")
         return {"text": text} if text else {"error": "Gemini returned an empty response."}
+    except httpx.HTTPStatusError:
+        return {"error": "Gemini did not return a response. Try again."}
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+        record("Gemini chat", "Gemini connection failed or returned an unreadable response.")
         return {"error": "Gemini did not return a response. Try again."}
 
 

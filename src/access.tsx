@@ -133,6 +133,48 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
   </section>;
 }
 
+type BackendLogEntry = { time: number; source: string; level: "error" | "info"; message: string };
+
+function BackendLog() {
+  const [entries, setEntries] = useState<BackendLogEntry[] | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ entries: BackendLogEntry[] }>("/api/admin/errors");
+      setEntries(result.entries);
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  useEffect(() => { void refresh(); }, []);
+
+  return <section className="panel access-panel admin-chat" aria-labelledby="backend-log-title">
+    <div className="panel-heading">
+      <h3 id="backend-log-title">Backend error log</h3>
+      <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshing…" : "Refresh log"}</button>
+    </div>
+    {error && <p className="warn" role="alert">{error}{entries && " Showing last loaded entries."}</p>}
+    {!entries && busy && <p className="muted" role="status">Loading backend log…</p>}
+    {entries?.length === 0 && <p className="muted" role="status">No backend errors recorded yet.</p>}
+    {!!entries?.length && <ol className="backend-log">
+      {entries.map((entry, index) => <li key={`${entry.time}-${index}`}>
+        <div className="backend-log-meta small">
+          <strong className={entry.level === "error" ? "warn" : "muted"}>{entry.level === "error" ? "Error" : "Info"}</strong>
+          <span>{entry.source}</span>
+          <time className="muted" dateTime={new Date(entry.time).toISOString()}>{new Date(entry.time).toLocaleString()}</time>
+        </div>
+        <p>{entry.message}</p>
+      </li>)}
+    </ol>}
+  </section>;
+}
+
 function AdminSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newKey, setNewKey] = useState("");
@@ -229,6 +271,7 @@ function AdminSettings() {
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
       <AdminChat configured={settings.configured} model={settings.model} /></> : !error && <p role="status">Loading settings…</p>}
+      <BackendLog />
     </section>;
 }
 
