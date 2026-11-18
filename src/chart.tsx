@@ -32,7 +32,7 @@ export function Chart({ candles, signal, frame, quote }: {
     const chart = createChart(host.current!, {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: chartColor("--panel") }, textColor: chartColor("--muted"),
-        attributionLogo: true, fontFamily: "Segoe UI, sans-serif", fontSize: 12 },
+        attributionLogo: true, fontFamily: "Geist, Segoe UI, sans-serif", fontSize: 12 },
       grid: { vertLines: { color: chartColor("--grid") }, horzLines: { color: chartColor("--grid") } },
       rightPriceScale: { borderColor: chartColor("--line") },
       timeScale: { timeVisible: true, secondsVisible: false, borderColor: chartColor("--line"), rightOffset: 5 },

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, CalendarDays, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, UserRound, Users, X } from "lucide-react";
+import { Bell, CalendarDays, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X } from "lucide-react";
 import { Chart } from "./chart";
 import { Performance } from "./performance";
 import { Access, AdminSettings, adminViews, ApiError, api, type AdminView } from "./access";
@@ -8,7 +8,11 @@ import { InstallButton } from "./install";
 import { CandleClock } from "./candle-clock";
 import type { Dashboard, EntryCheck, Frame } from "./types";
 import { applyTheme, readTheme, ThemeToggle } from "./theme";
-import "@fontsource-variable/outfit";
+import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
+import "@fontsource/geist/latin-400.css";
+import "@fontsource/geist/latin-500.css";
+import "@fontsource/geist/latin-600.css";
+import "@fontsource/geist/latin-700.css";
 import "./style.css";
 
 const number = new Intl.NumberFormat("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -115,22 +119,25 @@ function Profile() {
     }
   }
   return <section className="panel below profile-panel" id="profile" aria-labelledby="profile-title">
-    <div className="panel-heading"><h2 id="profile-title">Profile</h2>
-      {profile && <span className="muted">{profile.role === "admin" ? "Admin" : "Viewer"}</span>}
-    </div>
+    <PanelHeading id="profile-title" title="Profile">
+      {profile && <Badge>{profile.role === "admin" ? "Admin" : "Viewer"}</Badge>}
+    </PanelHeading>
     {profile ? <form className="profile-form" onSubmit={event => void save(event)}>
       <div className="profile-photo">
         {profile.photo ? <img src={profile.photo} width="64" height="64" alt="Your profile photo" /> :
           <span className="profile-photo-placeholder" aria-hidden="true">{profile.display_name.trim()[0]?.toUpperCase() || "G"}</span>}
-        <label>Profile photo<input type="file" accept="image/*" disabled={busy}
-          onChange={event => void choosePhoto(event.currentTarget)} /></label>
+        <label className="photo-picker">
+          <input type="file" accept="image/*" disabled={busy} aria-label="Profile photo"
+            onChange={event => void choosePhoto(event.currentTarget)} />
+          <span aria-hidden="true"><Upload size={16} /> Choose photo</span>
+        </label>
         {profile.photo && <button type="button" disabled={busy}
           onClick={() => { setProfile({ ...profile, photo: null }); setMessage(""); }}>Remove photo</button>}
       </div>
       <label>Display name<input value={profile.display_name} maxLength={60} autoComplete="nickname"
         disabled={busy} onChange={event => setProfile({ ...profile, display_name: event.target.value })} /></label>
-      <button type="submit" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
-    </form> : !message && <p className="muted" role="status">Loading profile…</p>}
+      <button type="submit" className="primary" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
+    </form> : !message && <LoadingState>Loading profile…</LoadingState>}
     {message && <p role="status">{message}</p>}
   </section>;
 }
@@ -213,9 +220,9 @@ function Alerts({ data }: { data: Dashboard }) {
     });
   }
   return <section id="alerts" className="panel below" aria-labelledby="alerts-title">
-    <div className="panel-heading"><h2 id="alerts-title">Notifications</h2>
-      {data.push_key && supported && <button disabled={busy} onClick={toggle}>{status?.enabled ? "Disable notifications" : "Enable notifications"}</button>}
-    </div>
+    <PanelHeading id="alerts-title" title="Notifications">
+      {data.push_key && supported && <button className={status?.enabled ? undefined : "primary"} disabled={busy} onClick={toggle}>{status?.enabled ? "Disable notifications" : "Enable notifications"}</button>}
+    </PanelHeading>
     <p className="muted small">{!data.push_key ? "Phone delivery requires HTTPS and Web Push keys." :
       !supported ? "On iPhone or iPad, open Goldsignal from your Home Screen to enable notifications." :
         status?.enabled ? "This device is subscribed to entry and trade updates." : "Enable notifications on this device to receive entry and trade updates."}</p>
@@ -228,10 +235,13 @@ function Alerts({ data }: { data: Dashboard }) {
         status.test === "queued" ? "Test queued. Check delivery in a few seconds." : "Test delivery failed or expired. Check notification settings and try again."}
     </p>}
     {message && <p role="status">{message}</p>}
-    {data.alerts.length ? <ul className="rows">
-      {data.alerts.slice(0, 6).map(alert => <li key={alert.id}><div><a href={alert.url}>{alert.title}</a>
-        <p className="muted small">{alert.body}</p></div><span className="row-time">{displayTime(alert.time)}<small>{alert.delivery}</small></span></li>)}
-    </ul> : <p className="muted">Shared entries and tracking updates appear here.</p>}
+    {data.alerts.length ? <ul className="rows notification-rows">
+      {data.alerts.slice(0, 6).map(alert => <li key={alert.id}>
+        <span className="row-icon" aria-hidden="true"><Bell size={16} /></span>
+        <div className="row-content"><a className="row-title" href={alert.url}>{alert.title}</a><p className="muted small">{alert.body}</p></div>
+        <span className="row-time">{displayTime(alert.time)}<small>{alert.delivery}</small></span>
+      </li>)}
+    </ul> : <EmptyState icon={<Bell size={18} />}>Shared entries and tracking updates appear here.</EmptyState>}
   </section>;
 }
 
@@ -321,6 +331,7 @@ function App({ role, signOut, expired }: {
   const session = data?.session;
   const candidate = data?.candidate;
   const pattern = candidate?.evidence.pattern;
+  const viewLabel = [...dashboardViews, ...adminViews].find(([id]) => id === view)?.[1] ?? "Profile";
   const showNotificationSetup = !!data?.push_key && "Notification" in window &&
     (matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone) &&
     Notification.permission === "default";
@@ -348,6 +359,7 @@ function App({ role, signOut, expired }: {
       {role !== "demo" && <button className="sidebar-sign-out" type="button" onClick={() => void signOut()}>Sign out</button>}
     </aside>
     <header className="dashboard-toolbar">
+      <span className="toolbar-context" aria-hidden="true">{viewLabel}</span>
       <button className="toolbar-icon mobile-menu" type="button" aria-label={menuOpen ? "Close navigation" : "Open navigation"}
         aria-controls="dashboard-sidebar" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
         {menuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
@@ -384,7 +396,7 @@ function App({ role, signOut, expired }: {
       <div className="workspace">
           <section className="panel side-card signal" id="signal" aria-labelledby="signal-title">
             <div className="panel-heading"><h2 id="signal-title">{selected ? "Selected signal" : "Live signal"}</h2>
-              {signal && <span className={signal.direction === "SELL" ? "warn" : "good"}>{signal.direction} · {signal.status}</span>}
+              {signal && <Badge tone={signal.direction === "SELL" ? "negative" : "positive"}>{signal.direction} · {signal.status}</Badge>}
             </div>
             {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to live signal</a>}
             {signal ? <>
@@ -405,7 +417,7 @@ function App({ role, signOut, expired }: {
               {openedEntry?.signal === signal.id && <p className="small muted">
                 At alert open · {openedEntry.check.side} {price(openedEntry.check.price)} · {openedEntry.check.valid ? "Valid" : openedEntry.check.reason}
               </p>}
-            </> : <p className="muted" role="status">{selected ? "Signal unavailable." : "Waiting for signal"}</p>}
+            </> : <EmptyState icon={<ChartCandlestick size={18} />}>{selected ? "Signal unavailable." : "Waiting for signal"}</EmptyState>}
           </section>
         <section className="panel chart-panel" aria-labelledby="chart-title">
           <div className="chart-header">
@@ -417,7 +429,7 @@ function App({ role, signOut, expired }: {
                 clock={data?.clock} receivedAt={cursor.receivedAt} status={error ? "STALE" : data?.status} />
             </div>
           </div>
-          <div className="chart-frames" role="group" aria-label="Chart timeframe">
+          <div className="chart-frames segment-group" role="group" aria-label="Chart timeframe">
             {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {
               if (value !== frame) {
                 cursor.revision = undefined;
@@ -449,10 +461,15 @@ function App({ role, signOut, expired }: {
       </div>
       <div className="dashboard-view" hidden={view !== "history"}>
           <section className="panel below" id="history" aria-labelledby="history-title">
-            <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
-            {data?.history.length ? <ul className="rows">{data.history.map(item =>
-              <li key={item.id}><div><a href={`${page}?signal=${item.id}#signal`} onClick={event => select(event, item.id)}>{item.direction} · {price(item.reference)}</a>
-                <p className="muted small">{item.strategy ?? "M15 baseline"} · {displayTime(item.created)} MYT</p></div><span>{item.status}</span></li>)}</ul> : <p className="muted">No signals saved yet.</p>}
+            <PanelHeading id="history-title" title="Signal history"><Badge>Simulated execution</Badge></PanelHeading>
+            {data?.history.length ? <ul className="rows history-rows">{data.history.map(item =>
+              <li key={item.id}>
+                <Badge tone={item.direction === "BUY" ? "positive" : "negative"}>{item.direction}</Badge>
+                <div className="row-content"><a className="row-title" href={`${page}?signal=${item.id}#signal`}
+                  aria-label={`${item.direction} · ${price(item.reference)}`} onClick={event => select(event, item.id)}>{price(item.reference)}</a>
+                  <p className="muted small">{item.strategy ?? "M15 baseline"} · {displayTime(item.created)} MYT</p></div>
+                <Badge tone={item.status === "STOPPED" ? "negative" : item.status === "COMPLETED" ? "positive" : "neutral"}>{item.status}</Badge>
+              </li>)}</ul> : <EmptyState icon={<History size={18} />}>No signals saved yet.</EmptyState>}
             <details><summary>Lifecycle and comparison</summary>
               {data?.events.map(event => <p className="small" key={event.id}>{displayTime(event.time)} MYT · {event.kind} · SL {price(event.stop)}{event.note ? ` · ${event.note}` : ""}</p>)}
               {data && (["with_news", "without_news"] as const).map(key => {
@@ -464,13 +481,13 @@ function App({ role, signOut, expired }: {
       </div>
       <div className="dashboard-view" hidden={view !== "news"}>
         <section className="panel below" id="news" aria-labelledby="news-title">
-          <div className="panel-heading"><h2 id="news-title">USD calendar</h2><span className="muted small">{data?.mode === "demo" ? "Mock feed" : "Official sources"}</span></div>
+          <PanelHeading id="news-title" title="USD calendar"><Badge>{data?.mode === "demo" ? "Mock feed" : "Official sources"}</Badge></PanelHeading>
           {data?.calendar.restriction && <p className="warn">{data.calendar.restriction}</p>}
-          {data?.calendar.events?.length ? <ul className="rows">{data.calendar.events.map(event =>
-            <li key={`${event.source}-${event.time}-${event.title}`}><div>{event.url ? <a href={event.url}>{event.title}</a> : event.title}
-              <p className="muted small">{event.source} · {event.impact === "medium" ? "Timing watch" : "Entry pause"}
+          {data?.calendar.events?.length ? <ul className="rows calendar-rows">{data.calendar.events.map(event =>
+            <li key={`${event.source}-${event.time}-${event.title}`}><div className="row-content">{event.url ? <a className="row-title" href={event.url}>{event.title}</a> : <span className="row-title">{event.title}</span>}
+              <p className="row-meta"><span>{event.source}</span><Badge tone={event.impact === "medium" ? "neutral" : "accent"}>{event.impact === "medium" ? "Timing watch" : "Entry pause"}</Badge>
                 {(["actual", "forecast", "previous"] as const).filter(key => event[key] != null).map(key => ` · ${key} ${event[key]}`)}</p></div>
-              <span className="row-time">{displayTime(event.time)}<small>MYT</small></span></li>)}</ul> : <p className="muted">No upcoming releases loaded.</p>}
+              <span className="row-time">{displayTime(event.time)}<small>MYT</small></span></li>)}</ul> : <EmptyState icon={<CalendarDays size={18} />}>No upcoming releases loaded.</EmptyState>}
           <details><summary>Headlines and feed freshness</summary>
             {Object.entries(data?.calendar.sources ?? {}).map(([source, ts]) => <p key={source} className="small">{source} · refreshed {displayTime(ts)} MYT</p>)}
             {Object.entries(data?.calendar.errors ?? {}).map(([source, reason]) => <p key={source} className="small warn">{source} · {reason}</p>)}
@@ -485,7 +502,7 @@ function App({ role, signOut, expired }: {
       </div>
       {hasAdmin && <AdminSettings view={adminViews.find(([id]) => id === view)?.[0]} />}
     </main>
-    <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a></footer>
+    <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a> · <a href="https://shadcndashboard.dev/">Shadcn Dashboard</a></footer>
   </div>;
 }
 

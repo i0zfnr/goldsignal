@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
+import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
 
 type Role = "admin" | "viewer" | "demo" | null;
 type Settings = {
@@ -67,11 +68,6 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
           {error && <p className="warn" role="alert">{error}</p>}
         </form>
       </section>
-      <aside className="login-brand" aria-label="Goldsignal">
-        <img src="/app-icon-192.png" alt="" width="64" height="64" />
-        <strong>Goldsignal</strong>
-        <p>XAUUSD market signals</p>
-      </aside>
     </main>
   </>;
 }
@@ -120,12 +116,13 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
     }
   }
 
-  return <section className="panel access-panel admin-chat" aria-labelledby="gemini-chat-title">
-    <h3 id="gemini-chat-title">Gemini chat</h3>
+  return <section className="panel access-panel admin-chat chat-panel" aria-labelledby="gemini-chat-title">
+    <PanelHeading title="Gemini chat" id="gemini-chat-title" as="h3">
+      {configured && <Badge>{model}</Badge>}
+    </PanelHeading>
     {configured ? <>
-      <p className="small muted">Chat model <code className="model-id">{model}</code></p>
       <div className="chat-turns" role="log" aria-label="Conversation">
-        {turns.map((turn, index) => <article key={index}>
+        {turns.map((turn, index) => <article key={index} data-speaker={turn.role}>
           <strong>{turn.role === "user" ? "You" : "Gemini"}</strong>
           <p>{turn.text}</p>
         </article>)}
@@ -135,7 +132,7 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
         <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Gemini…" : "Send message"}</button>
       </form>
       {error && <p className="warn" role="alert">{error}</p>}
-    </> : <p className="muted">Save your API key in Gemini review to start chatting.</p>}
+    </> : <EmptyState>Save your API key in Gemini review to start chatting.</EmptyState>}
   </section>;
 }
 
@@ -161,17 +158,16 @@ function BackendLog() {
   useEffect(() => { void refresh(); }, []);
 
   return <section className="panel access-panel admin-chat" aria-labelledby="backend-log-title">
-    <div className="panel-heading">
-      <h3 id="backend-log-title">Backend error log</h3>
+    <PanelHeading title="Backend error log" id="backend-log-title" as="h3">
       <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshing…" : "Refresh log"}</button>
-    </div>
+    </PanelHeading>
     {error && <p className="warn" role="alert">{error}{entries && " Showing last loaded entries."}</p>}
-    {!entries && busy && <p className="muted" role="status">Loading backend log…</p>}
-    {entries?.length === 0 && <p className="muted" role="status">No backend errors recorded yet.</p>}
+    {!entries && busy && <LoadingState>Loading backend log…</LoadingState>}
+    {entries?.length === 0 && <EmptyState>No backend errors recorded yet.</EmptyState>}
     {!!entries?.length && <ol className="backend-log">
       {entries.map((entry, index) => <li key={`${entry.time}-${index}`}>
         <div className="backend-log-meta small">
-          <strong className={entry.level === "error" ? "warn" : "muted"}>{entry.level === "error" ? "Error" : "Info"}</strong>
+          <Badge tone={entry.level === "error" ? "negative" : "neutral"}>{entry.level === "error" ? "Error" : "Info"}</Badge>
           <span>{entry.source}</span>
           <time className="muted" dateTime={new Date(entry.time).toISOString()}>{new Date(entry.time).toLocaleString()}</time>
         </div>
@@ -238,8 +234,8 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
       {(view === "admin-users" || view === "admin-ai") && message && <p role="status">{message}</p>}
       {settings ? <>
         <section className="panel access-panel" hidden={view !== "admin-users"}>
-          <div className="panel-heading"><h3>Viewer access</h3><span className="muted">{settings.keys.filter(key => !key.revoked).length} active</span></div>
-          <form className="access-form" onSubmit={create}>
+          <PanelHeading title="Viewer access" as="h3"><Badge tone="positive">{settings.keys.filter(key => !key.revoked).length} active</Badge></PanelHeading>
+          <form className="access-form inline-form" onSubmit={create}>
             <label>Key label<input name="label" placeholder="e.g. Viewer name" required maxLength={80} /></label>
             <button className="primary" disabled={busy}>Create access key</button>
           </form>
@@ -250,16 +246,16 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
           </div>}
           {settings.keys.length ? <ul className="key-list">{settings.keys.map(key => <li key={key.id}>
             <span>{key.label}</span>
-            {key.revoked ? <span className="muted">Revoked</span> : <button disabled={busy} onClick={() => {
+            {key.revoked ? <Badge>Revoked</Badge> : <div className="key-actions"><Badge tone="positive">Active</Badge><button className="danger-button" disabled={busy} onClick={() => {
               if (confirm(`Revoke access for ${key.label}?`)) void action(async () => {
                 await api(`/api/admin/keys?id=${encodeURIComponent(key.id)}`, { method: "DELETE" });
                 await refresh();
               });
-            }}>Revoke</button>}
-          </li>)}</ul> : <p className="muted">No access keys issued.</p>}
+            }}>Revoke</button></div>}
+          </li>)}</ul> : <EmptyState>No access keys issued.</EmptyState>}
         </section>
         <section className="panel access-panel" hidden={view !== "admin-ai"}>
-          <div className="panel-heading"><h3>Gemini review</h3><span className={settings.enabled ? "good" : "muted"}>{settings.enabled ? "Enabled" : "Disabled"}</span></div>
+          <PanelHeading title="Gemini review" as="h3"><Badge tone={settings.enabled ? "positive" : "neutral"}>{settings.enabled ? "Enabled" : "Disabled"}</Badge></PanelHeading>
           <dl className="model-display">
             <dt>Configured Gemini model</dt>
             <dd><code className="model-id">{settings.model}</code></dd>
@@ -284,7 +280,7 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
       <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
-      </> : !error && view !== "admin-errors" && <p role="status">Loading settings…</p>}
+      </> : !error && view !== "admin-errors" && <LoadingState>Loading settings…</LoadingState>}
       {view === "admin-errors" && <BackendLog />}
     </section>;
 }
