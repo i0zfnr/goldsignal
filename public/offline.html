@@ -3,12 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0d1118">
+  <meta name="theme-color" content="#fffdf8">
   <title>Goldsignal offline</title>
+  <script>
+    try {
+      if (localStorage.getItem("goldsignal-theme") === "dark") {
+        document.documentElement.dataset.theme = "dark";
+        document.querySelector('meta[name="theme-color"]').content = "#1c1b19";
+      }
+    } catch {}
+  </script>
   <style>
-    body { margin: 0; padding: 24px; background: #0d1118; color: #f1f4f9; font: 1rem/1.5 system-ui, sans-serif; }
+    :root { --page: #f8f6f0; --text: #26221d; --accent: #a44329; --ink: #fff; }
+    :root[data-theme="dark"] { --page: #1c1b19; --text: #f4eee5; --accent: #efa17f; --ink: #261710; color-scheme: dark; }
+    body { margin: 0; padding: 24px; background: var(--page); color: var(--text); font: 1rem/1.5 system-ui, sans-serif; }
     main { max-width: 430px; margin: 12vh auto; }
-    a { display: inline-block; padding: 10px 16px; border-radius: 5px; font-weight: 650; background: #f4c66a; color: #211707; }
+    a { display: inline-block; padding: 10px 16px; border-radius: 8px; font-weight: 650; background: var(--accent); color: var(--ink); }
   </style>
 </head>
 <body>

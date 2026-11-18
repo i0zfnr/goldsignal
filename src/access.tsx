@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { InstallButton } from "./install";
+import { ThemeToggle } from "./theme";
 
 type Role = "admin" | "viewer" | "demo" | null;
 type Settings = {
@@ -31,7 +32,7 @@ function AccessHeader({ adminShortcut = false }: { adminShortcut?: boolean }) {
   return <header className="site-header"><div className="header-inner">
     <a className="wordmark" href="/"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
     {adminShortcut && <a className="admin-shortcut" href="/admin" aria-label="Admin sign-in"><span>Admin sign-in</span></a>}
-    <InstallButton />
+    <div className="toolbar-actions"><InstallButton /><ThemeToggle /></div>
   </div></header>;
 }
 
@@ -53,7 +54,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
     }
   }
   return <><AccessHeader adminShortcut={!isAdmin} />
-    <main className="access-page">
+    <main className="access-page login-layout">
       <section className="panel access-panel" aria-labelledby="login-title">
         <h1 id="login-title">{isAdmin ? "Admin sign-in" : "Sign in to Goldsignal"}</h1>
         <p className="muted">{isAdmin ? "Manage user access and Gemini review." : "Enter the access key your admin gave you."}</p>
@@ -66,6 +67,11 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
           {error && <p className="warn" role="alert">{error}</p>}
         </form>
       </section>
+      <aside className="login-brand" aria-label="Goldsignal">
+        <img src="/app-icon-192.png" alt="" width="64" height="64" />
+        <strong>Goldsignal</strong>
+        <p>XAUUSD market signals</p>
+      </aside>
     </main>
   </>;
 }
@@ -175,7 +181,15 @@ function BackendLog() {
   </section>;
 }
 
-function AdminSettings() {
+export const adminViews = [
+  ["admin-users", "Users"],
+  ["admin-ai", "AI Configuration"],
+  ["admin-chat", "AI Chat"],
+  ["admin-errors", "Error Log"],
+] as const;
+export type AdminView = typeof adminViews[number][0];
+
+export function AdminSettings({ view }: { view: AdminView | undefined }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newKey, setNewKey] = useState("");
   const [message, setMessage] = useState("");
@@ -218,12 +232,12 @@ function AdminSettings() {
     });
   }
 
-  return <section className="admin-page" id="admin-settings" aria-labelledby="admin-settings-title">
-      <h2 id="admin-settings-title">Admin settings</h2>
-      {error && <p className="warn" role="alert">{error}</p>}
-      {message && <p role="status">{message}</p>}
-      {settings ? <><div className="admin-grid">
-        <section className="panel access-panel">
+  return <section className="admin-page" id={view} hidden={!view} aria-labelledby="admin-settings-title">
+      <h2 id="admin-settings-title">{adminViews.find(([id]) => id === view)?.[1]}</h2>
+      {view !== "admin-errors" && error && <p className="warn" role="alert">{error}</p>}
+      {(view === "admin-users" || view === "admin-ai") && message && <p role="status">{message}</p>}
+      {settings ? <>
+        <section className="panel access-panel" hidden={view !== "admin-users"}>
           <div className="panel-heading"><h3>Viewer access</h3><span className="muted">{settings.keys.filter(key => !key.revoked).length} active</span></div>
           <form className="access-form" onSubmit={create}>
             <label>Key label<input name="label" placeholder="e.g. Viewer name" required maxLength={80} /></label>
@@ -244,7 +258,7 @@ function AdminSettings() {
             }}>Revoke</button>}
           </li>)}</ul> : <p className="muted">No access keys issued.</p>}
         </section>
-        <section className="panel access-panel">
+        <section className="panel access-panel" hidden={view !== "admin-ai"}>
           <div className="panel-heading"><h3>Gemini review</h3><span className={settings.enabled ? "good" : "muted"}>{settings.enabled ? "Enabled" : "Disabled"}</span></div>
           <dl className="model-display">
             <dt>Configured Gemini model</dt>
@@ -260,8 +274,7 @@ function AdminSettings() {
             <button className="primary" disabled={busy}>Save Gemini settings</button>
           </form>
         </section>
-      </div>
-      <section className="panel access-panel admin-chat">
+      <section className="panel access-panel admin-chat" hidden={view !== "admin-ai"}>
         <div className="panel-heading"><h3>Breaking-news pause</h3>
           <button type="button" disabled={busy} onClick={() => void action(async () => {
             await send("/api/admin/pause", "PUT", { paused: !settings.paused });
@@ -270,13 +283,14 @@ function AdminSettings() {
         </div>
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
-      <AdminChat configured={settings.configured} model={settings.model} /></> : !error && <p role="status">Loading settings…</p>}
-      <BackendLog />
+      <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
+      </> : !error && view !== "admin-errors" && <p role="status">Loading settings…</p>}
+      {view === "admin-errors" && <BackendLog />}
     </section>;
 }
 
 export function Access({ dashboard }: { dashboard: (
-  role: Role, signOut: () => Promise<void>, expired: () => void, settings?: ReactNode
+  role: Role, signOut: () => Promise<void>, expired: () => void
 ) => ReactNode }) {
   const [role, setRole] = useState<Role | undefined>(undefined);
   const [error, setError] = useState("");
@@ -303,5 +317,5 @@ export function Access({ dashboard }: { dashboard: (
   if (role === undefined) return <><AccessHeader /><main className="access-page"><p role="status">Checking access…</p></main></>;
   if (isAdmin && role !== "admin") return <LoginPage key={role ?? "guest"} isAdmin complete={setRole} />;
   if (!role) return <LoginPage isAdmin={false} complete={setRole} />;
-  return dashboard(role, signOut, () => setRole(null), isAdmin ? <AdminSettings /> : undefined);
+  return dashboard(role, signOut, () => setRole(null));
 }

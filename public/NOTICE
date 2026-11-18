@@ -1,2 +1,5 @@
 TradingView Lightweight Charts™
 Copyright (с) 2025 TradingView, Inc. https://www.tradingview.com/
+
+UI layout and visual system based on TailAdmin React (MIT).
+https://github.com/TailAdmin/free-react-tailwind-admin-dashboard

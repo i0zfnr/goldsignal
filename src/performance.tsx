@@ -40,7 +40,14 @@ export function Performance({ revision }: { revision?: string }) {
         <div><dt>Net pips before fees</dt><dd className={report.pips < 0 ? "warn" : report.pips > 0 ? "good" : ""}>{count ? pipsFormat.format(report.pips) : "—"}</dd></div>
       </dl>
       {count > 0 ? <>
-        <p className="small muted">{report.wins} profitable · {report.flat} break-even · {report.losses} losing</p>
+        <div className="report-outcomes">
+          <div className="win-gauge" aria-hidden="true" style={{ background: `conic-gradient(var(--gold) ${100 * report.wins / count}%, var(--line) 0)` }}>
+            <span>{winRate(report)}</span>
+          </div>
+          <dl><div><dt>Profitable</dt><dd className="good">{report.wins}</dd></div>
+            <div><dt>Break-even</dt><dd>{report.flat}</dd></div>
+            <div><dt>Losing</dt><dd className="warn">{report.losses}</dd></div></dl>
+        </div>
         <table className="report-breakdown">
           <thead><tr><th scope="col">{period === "all" ? "Month" : "Date"}</th><th scope="col">Win rate</th><th scope="col">Net pips</th></tr></thead>
           <tbody>{report.buckets.map(row => <tr key={row.label}>

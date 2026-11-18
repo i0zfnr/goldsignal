@@ -1,3 +1,4 @@
+import base64
 import getpass
 import hashlib
 import hmac
@@ -62,6 +63,32 @@ def admin(request):
 
 class ViewerProfile(BaseModel):
     display_name: str = Field(max_length=60)
+    photo: str | None = Field(default=None, max_length=7000)
+
+
+def valid_profile_photo(photo):
+    prefix = "data:image/jpeg;base64,"
+    if not photo.startswith(prefix):
+        return False
+    try:
+        data = base64.b64decode(photo[len(prefix):], validate=True)
+    except ValueError:
+        return False
+    if not data.startswith(b"\xff\xd8") or not data.endswith(b"\xff\xd9"):
+        return False
+    position = 2
+    while position + 4 <= len(data) and data[position] == 255:
+        marker = data[position + 1]
+        length = int.from_bytes(data[position + 2:position + 4], "big")
+        end = position + 2 + length
+        if length < 2 or end > len(data) or marker == 0xda:
+            return False
+        if marker in (0xc0, 0xc2) and length >= 8:
+            height = int.from_bytes(data[position + 5:position + 7], "big")
+            width = int.from_bytes(data[position + 7:position + 9], "big")
+            return 0 < width <= 96 and 0 < height <= 96
+        position = end
+    return False
 
 
 @router.get("/api/viewer-profile")
@@ -72,12 +99,16 @@ def viewer_profile(request: Request, body: ViewerProfile | None = None):
         raise HTTPException(401, "Sign in to view your profile.")
     if request.method == "PUT" and body is None:
         raise HTTPException(422, "Enter a display name.")
+    if request.method == "PUT" and body is not None and body.photo is not None and not valid_profile_photo(body.photo):
+        raise HTTPException(422, "Choose a valid profile photo.")
     with transaction() as store:
         saved = store.get("viewer_profile", actor["id"], {})
         if request.method == "PUT" and body is not None:
-            saved = {"display_name": body.display_name.strip()}
+            saved["display_name"] = body.display_name.strip()
+            if "photo" in body.model_fields_set:
+                saved["photo"] = body.photo
             store.put("viewer_profile", actor["id"], saved)
-    return {"display_name": saved.get("display_name", ""), "role": actor["role"]}
+    return {"display_name": saved.get("display_name", ""), "role": actor["role"], "photo": saved.get("photo")}
 
 
 def allow_attempt(role):

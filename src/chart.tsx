@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CandlestickSeries, ColorType, createChart, LineStyle,
   type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp,
@@ -27,6 +27,7 @@ export function Chart({ candles, signal, frame, quote }: {
   const closed = useRef<{ start: number; end: number; fill: number; stop: number; target: number } | null>(null);
   const scaleRange = useRef<number[]>([]);
   const liveLines = useRef<IPriceLine[]>([]);
+  const [palette, setPalette] = useState(0);
   useEffect(() => {
     const chart = createChart(host.current!, {
       autoSize: true,
@@ -50,6 +51,20 @@ export function Chart({ candles, signal, frame, quote }: {
       },
     });
     state.current = { chart, series, lines: [], data: new Map() };
+    function updateTheme() {
+      const borderColor = chartColor("--line");
+      const grid = chartColor("--grid");
+      const upColor = chartColor("--buy");
+      const downColor = chartColor("--sell");
+      chart.applyOptions({
+        layout: { background: { type: ColorType.Solid, color: chartColor("--panel") }, textColor: chartColor("--muted") },
+        grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+        rightPriceScale: { borderColor }, timeScale: { borderColor },
+      });
+      series.applyOptions({ upColor, downColor, wickUpColor: upColor, wickDownColor: downColor });
+      setPalette(value => value + 1);
+    }
+    window.addEventListener("goldsignal-theme", updateTheme);
     let animation = 0;
     let lastBand = "";
     function positionBand() {
@@ -108,7 +123,13 @@ export function Chart({ candles, signal, frame, quote }: {
       animation = requestAnimationFrame(positionBand);
     }
     animation = requestAnimationFrame(positionBand);
-    return () => { cancelAnimationFrame(animation); chart.remove(); state.current = null; liveLines.current = []; };
+    return () => {
+      window.removeEventListener("goldsignal-theme", updateTheme);
+      cancelAnimationFrame(animation);
+      chart.remove();
+      state.current = null;
+      liveLines.current = [];
+    };
   }, [frame]);
 
   useEffect(() => {
@@ -170,10 +191,10 @@ export function Chart({ candles, signal, frame, quote }: {
     for (const [title, price, color] of levels) {
       if (price !== undefined) current.lines.push(current.series.createPriceLine({
         price, color, title, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
-        axisLabelTextColor: chartColor("--page"),
+        axisLabelTextColor: chartColor("--chart-label"),
       }));
     }
-  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget]);
+  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget, palette]);
   const bid = quote?.bid, ask = quote?.ask;
   useEffect(() => {
     const series = state.current?.series;
@@ -184,15 +205,15 @@ export function Chart({ candles, signal, frame, quote }: {
       return;
     }
     if (liveLines.current.length) {
-      liveLines.current[0].applyOptions({ price: bid });
-      liveLines.current[1].applyOptions({ price: ask });
+      liveLines.current[0].applyOptions({ price: bid, color: chartColor("--buy"), axisLabelTextColor: chartColor("--chart-label") });
+      liveLines.current[1].applyOptions({ price: ask, color: chartColor("--ask"), axisLabelTextColor: chartColor("--chart-label") });
       return;
     }
     liveLines.current = [
-      series.createPriceLine({ price: bid, title: "Bid", color: chartColor("--buy"), lineWidth: 1, axisLabelTextColor: chartColor("--page") }),
-      series.createPriceLine({ price: ask, title: "Ask", color: chartColor("--ask"), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelTextColor: chartColor("--page") }),
+      series.createPriceLine({ price: bid, title: "Bid", color: chartColor("--buy"), lineWidth: 1, axisLabelTextColor: chartColor("--chart-label") }),
+      series.createPriceLine({ price: ask, title: "Ask", color: chartColor("--ask"), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelTextColor: chartColor("--chart-label") }),
     ];
-  }, [bid, ask]);
+  }, [bid, ask, palette]);
   return <div className="chart-shell">
     <div ref={host} className="chart" role="img" aria-label={`XAUUSD ${frame} candlestick chart. Exact signal levels are listed below.`} />
     <div ref={shade} className="entry-shade" hidden aria-hidden="true" />

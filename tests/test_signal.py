@@ -32,10 +32,11 @@ def test_access_and_gemini_storage(db, monkeypatch):
         secret = operator.post("/api/admin/keys", json={"label": "Fixture viewer"}).json()["key"]
         assert viewer.post("/api/auth/viewer", json={"credential": secret}).status_code == 200
         assert viewer.put("/api/viewer-profile", json={"display_name": " Fixture Viewer "}).json() == {
-            "display_name": "Fixture Viewer", "role": "viewer",
+            "display_name": "Fixture Viewer", "role": "viewer", "photo": None,
         }
         assert viewer.get("/api/viewer-profile").json()["display_name"] == "Fixture Viewer"
-        assert operator.get("/api/viewer-profile").json() == {"display_name": "", "role": "admin"}
+        assert operator.get("/api/viewer-profile").json() == {"display_name": "", "role": "admin", "photo": None}
+        assert viewer.put("/api/viewer-profile", json={"display_name": "Viewer", "photo": "data:image/svg+xml;base64,AA=="}).status_code == 422
         assert viewer.get("/api/dashboard?frame=M1").json()["frame"] == "M1"
         assert viewer.get("/api/admin/errors").status_code == 403
         assert operator.get("/api/admin/errors").json() == {"entries": []}

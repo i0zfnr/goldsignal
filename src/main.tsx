@@ -1,14 +1,14 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Bell, CalendarDays, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, UserRound, Users, X } from "lucide-react";
 import { Chart } from "./chart";
 import { Performance } from "./performance";
-import { Access, ApiError, api } from "./access";
+import { Access, AdminSettings, adminViews, ApiError, api, type AdminView } from "./access";
 import { InstallButton } from "./install";
 import { CandleClock } from "./candle-clock";
 import type { Dashboard, EntryCheck, Frame } from "./types";
-import "@fontsource/geist/latin-400.css";
-import "@fontsource/geist/latin-600.css";
-import "@fontsource/geist/latin-700.css";
+import { applyTheme, readTheme, ThemeToggle } from "./theme";
+import "@fontsource-variable/outfit";
 import "./style.css";
 
 const number = new Intl.NumberFormat("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -26,36 +26,85 @@ const dashboardViews = [
   ["news", "USD Calendar"],
   ["alerts", "Notifications"],
 ] as const;
-type DashboardView = typeof dashboardViews[number][0] | "admin-settings" | "profile";
+type DashboardView = typeof dashboardViews[number][0] | AdminView | "profile";
+const viewIcons = {
+  signal: ChartCandlestick, performance: ChartNoAxesCombined, history: History, news: CalendarDays,
+  alerts: Bell, profile: UserRound, "admin-users": Users, "admin-ai": Settings2,
+  "admin-chat": MessageSquare, "admin-errors": CircleAlert,
+};
 
 function currentView(isAdmin: boolean): DashboardView {
   const hash = location.hash.slice(1);
-  if (hash === "admin-settings" && isAdmin) return hash;
+  if (isAdmin) {
+    const adminView = adminViews.find(([id]) => id === hash)?.[0];
+    if (adminView) return adminView;
+    if (hash === "admin-settings") return "admin-users";
+  }
   if (hash === "profile") return hash;
-  return dashboardViews.find(([id]) => hash === id)?.[0] ?? (isAdmin && !currentSignal() ? "admin-settings" : "signal");
+  return dashboardViews.find(([id]) => hash === id)?.[0] ??
+    (isAdmin && location.pathname === "/admin" && !currentSignal() ? "admin-users" : "signal");
 }
 type PushStatus = { enabled: boolean; test: "queued" | "sent" | "failed" | "expired" | null };
+type ViewerProfile = { display_name: string; role: string; photo: string | null };
+
+async function resizeProfilePhoto(file: File) {
+  if (file.size > 12 * 1024 * 1024) throw new Error("Choose a photo smaller than 12 MB.");
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 96;
+    const context = canvas.getContext("2d");
+    if (!context || !image.naturalWidth || !image.naturalHeight) throw new Error("Could not read this photo.");
+    const size = Math.min(image.naturalWidth, image.naturalHeight);
+    context.drawImage(image, (image.naturalWidth - size) / 2, (image.naturalHeight - size) / 2, size, size, 0, 0, 96, 96);
+    for (const quality of [0.83, 0.68, 0.50, 0.3]) {
+      const photo = canvas.toDataURL("image/jpeg", quality);
+      if (photo.startsWith("data:image/jpeg;base64,") && photo.length <= 7000) return photo;
+    }
+    throw new Error("Could not resize this photo.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 function Profile() {
-  const [profile, setProfile] = useState<{ display_name: string; role: string } | null>(null);
+  const [profile, setProfile] = useState<ViewerProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
     const abort = new AbortController();
-    api<NonNullable<typeof profile>>("/api/viewer-profile", { signal: abort.signal })
+    api<ViewerProfile>("/api/viewer-profile", { signal: abort.signal })
       .then(result => { if (!abort.signal.aborted) setProfile(result); })
       .catch(() => { if (!abort.signal.aborted) setMessage("Could not load your profile."); });
     return () => abort.abort();
   }, []);
+  async function choosePhoto(input: HTMLInputElement) {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const photo = await resizeProfilePhoto(file);
+      setProfile(previous => previous && { ...previous, photo });
+    } catch {
+      setMessage("Could not use this photo. Choose a readable image smaller than 12 MB.");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!profile) return;
     setBusy(true);
     setMessage("");
     try {
-      const saved = await api<NonNullable<typeof profile>>("/api/viewer-profile", {
+      const saved = await api<ViewerProfile>("/api/viewer-profile", {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: profile.display_name }),
+        body: JSON.stringify({ display_name: profile.display_name, photo: profile.photo }),
       });
       setProfile(saved);
       setMessage("Profile saved.");
@@ -70,6 +119,14 @@ function Profile() {
       {profile && <span className="muted">{profile.role === "admin" ? "Admin" : "Viewer"}</span>}
     </div>
     {profile ? <form className="profile-form" onSubmit={event => void save(event)}>
+      <div className="profile-photo">
+        {profile.photo ? <img src={profile.photo} width="64" height="64" alt="Your profile photo" /> :
+          <span className="profile-photo-placeholder" aria-hidden="true">{profile.display_name.trim()[0]?.toUpperCase() || "G"}</span>}
+        <label>Profile photo<input type="file" accept="image/*" disabled={busy}
+          onChange={event => void choosePhoto(event.currentTarget)} /></label>
+        {profile.photo && <button type="button" disabled={busy}
+          onClick={() => { setProfile({ ...profile, photo: null }); setMessage(""); }}>Remove photo</button>}
+      </div>
       <label>Display name<input value={profile.display_name} maxLength={60} autoComplete="nickname"
         disabled={busy} onChange={event => setProfile({ ...profile, display_name: event.target.value })} /></label>
       <button type="submit" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
@@ -178,12 +235,13 @@ function Alerts({ data }: { data: Dashboard }) {
   </section>;
 }
 
-function App({ role, signOut, expired, settings }: {
-  role: string | null; signOut: () => Promise<void>; expired: () => void; settings?: ReactNode;
+function App({ role, signOut, expired }: {
+  role: string | null; signOut: () => Promise<void>; expired: () => void;
 }) {
-  const page = settings ? "/admin" : "/";
-  const hasAdmin = Boolean(settings);
+  const page = location.pathname === "/admin" ? "/admin" : "/";
+  const hasAdmin = role === "admin";
   const [view, setView] = useState(() => currentView(hasAdmin));
+  const [menuOpen, setMenuOpen] = useState(false);
   const [frame, setFrame] = useState<Frame>(() => {
     const requested = new URLSearchParams(location.search).get("frame");
     return frames.find(value => value === requested) ?? "M15";
@@ -218,6 +276,7 @@ function App({ role, signOut, expired, settings }: {
   }, [hasAdmin]);
   useEffect(() => {
     window.scrollTo(0, 0);
+    setMenuOpen(false);
   }, [view]);
   useEffect(() => {
     const abort = new AbortController();
@@ -266,25 +325,48 @@ function App({ role, signOut, expired, settings }: {
     (matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone) &&
     Notification.permission === "default";
   function viewLink(id: DashboardView, label: string) {
+    const Icon = viewIcons[id];
     return <a key={id} href={id === "signal" ? `${page}#signal` : `#${id}`}
       aria-current={view === id ? "page" : undefined}
-      onClick={id === "signal" ? event => select(event, null) : undefined}>{label}</a>;
+      onClick={event => {
+        setMenuOpen(false);
+        if (id === "signal") select(event, null);
+      }}><Icon size={20} strokeWidth={1.7} aria-hidden="true" />{label}</a>;
   }
   return <div className="dashboard-shell">
-    <aside className="dashboard-sidebar">
+    <aside className="dashboard-sidebar" id="dashboard-sidebar" data-open={menuOpen}>
       <a className="wordmark" href={`${page}#signal`} onClick={event => select(event, null)} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+      <h2 className="nav-group-label">Menu</h2>
       <nav aria-label="Dashboard sections">
         {dashboardViews.map(([id, label]) => viewLink(id, label))}
         {role !== "demo" && viewLink("profile", "Profile")}
-        {hasAdmin && viewLink("admin-settings", "Admin Settings")}
       </nav>
+      {hasAdmin && <div className="admin-nav-group">
+        <h2 id="admin-nav-title">Admin</h2>
+        <nav aria-labelledby="admin-nav-title">{adminViews.map(([id, label]) => viewLink(id, label))}</nav>
+      </div>}
+      {role !== "demo" && <button className="sidebar-sign-out" type="button" onClick={() => void signOut()}>Sign out</button>}
     </aside>
+    <header className="dashboard-toolbar">
+      <button className="toolbar-icon mobile-menu" type="button" aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+        aria-controls="dashboard-sidebar" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
+        {menuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+      </button>
+      <a className="wordmark toolbar-brand" href={`${page}#signal`} onClick={event => select(event, null)}
+        aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+      <div className="toolbar-actions">
+        <ThemeToggle />
+        <a className="toolbar-icon" href="#alerts" aria-label="Notifications"><Bell size={19} aria-hidden="true" /></a>
+        {role !== "demo" && <>
+          <a className="toolbar-icon desktop-profile" href="#profile" aria-label="Profile"><UserRound size={19} aria-hidden="true" /></a>
+          <button className="desktop-sign-out" type="button" onClick={() => void signOut()}>Sign out</button>
+        </>}
+      </div>
+    </header>
     <main className="dashboard-main">
       {role !== "demo" && <div className="session-actions">
         <InstallButton />
         {showNotificationSetup && <a href="#alerts">Set up notifications</a>}
-        {role === "admin" && !hasAdmin && <a href="/admin">Admin settings</a>}
-        <button type="button" onClick={() => void signOut()}>Sign out</button>
       </div>}
       <div hidden={view !== "signal"}>
       <div className="market-heading">
@@ -401,7 +483,7 @@ function App({ role, signOut, expired, settings }: {
         {view === "profile" && (role === "demo" ? <p className="muted">Sign in to manage a profile.</p> : <Profile />)}
         {data ? <Alerts data={data} /> : <p role="status">Loading notifications…</p>}
       </div>
-      <div className="dashboard-view" hidden={view !== "admin-settings"}>{settings}</div>
+      {hasAdmin && <AdminSettings view={adminViews.find(([id]) => id === view)?.[0]} />}
     </main>
     <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a></footer>
   </div>;
@@ -411,5 +493,6 @@ if ("serviceWorker" in navigator) {
   void navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
+applyTheme(readTheme());
 createRoot(document.getElementById("root")!).render(<Access
-  dashboard={(role, signOut, expired, settings) => <App role={role} signOut={signOut} expired={expired} settings={settings} />} />);
+  dashboard={(role, signOut, expired) => <App role={role} signOut={signOut} expired={expired} />} />);
