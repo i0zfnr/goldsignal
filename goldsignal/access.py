@@ -180,7 +180,7 @@ def save_gemini(body: Gemini, request: Request):
         config = store.get("ai", "gemini", {})
         if body.api_key is not None:
             key = body.api_key.get_secret_value().strip()
-            if len(key) < 12 or not key.isascii() or any(not (c.isalnum() or c in "_-") for c in key):
+            if len(key) < 12 or not key.isascii() or any(not (c.isalnum() or c in "._-") for c in key):
                 raise HTTPException(422, "Enter a valid Google AI Studio API key.")
             try:
                 config["ciphertext"] = encryption().encrypt(key.encode()).decode()

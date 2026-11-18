@@ -28,7 +28,7 @@ def test_access_and_gemini_storage(db, monkeypatch):
         assert viewer.post("/api/auth/viewer", json={"credential": secret}).status_code == 200
         assert viewer.get("/api/dashboard?frame=M1").json()["frame"] == "M1"
         assert viewer.put("/api/admin/gemini", json={"enabled": True}).status_code == 403
-        provider_key = "fixture-provider-key"
+        provider_key = "AQ.fixture-provider-key"
         assert operator.put("/api/admin/gemini", json={"api_key": provider_key, "enabled": True}).status_code == 200
         settings = operator.get("/api/admin/settings")
         assert settings.json()["enabled"] and secret not in settings.text and provider_key not in settings.text
