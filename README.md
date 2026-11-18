@@ -104,3 +104,19 @@ your-existing-ryaze-hostname.example {
 Web Push sends an eligible queued entry only while the original zone, account checks, session and expiry still pass. Delivery retries transient failures up to four attempts while valid. The saved lifecycle event and its alert share one database transaction and carry a stable deduplication key. The device uses the same key as its notification tag because an interrupted provider acknowledgement can be ambiguous. HTTPS and hosting costs are separate from paid API fees.
 
 [Caddy HTTPS setup](https://caddyserver.com/docs/automatic-https) · [Web Push subscription requirements](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe)
+
+### Ryaze managed Node deployment
+
+When Ryaze runs the public Node app and the Windows PC runs FastAPI and MT5, deploy this repository as a managed Node app with entry file `server.js`. That app builds the static dashboard and relays the four dashboard API routes. Generate the relay identity on Windows:
+
+```powershell
+.\.venv\Scripts\python.exe -m goldsignal.relay ryaze-relay.pem
+```
+
+Set `RELAY_PUBLIC_KEY` on Ryaze to the printed value. Keep the PEM on Windows. With the worker and FastAPI already running, start the outbound relay:
+
+```powershell
+.\.venv\Scripts\python.exe -m goldsignal.relay ryaze-relay.pem --url https://goldsignal.ryaze.my.id
+```
+
+Use the deployed hostname if it differs. Schedule the relay beside the Windows API and worker if it should reconnect after login or restart. Ryaze serves the dashboard while Windows is offline. Live API calls recover when the relay reconnects. Windows FastAPI listens on loopback and needs no inbound port.
