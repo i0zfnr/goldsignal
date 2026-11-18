@@ -12,6 +12,7 @@ from goldsignal.lifecycle import advance
 from goldsignal.market import REPLAY_START, Replay, demo_profile, demo_spec
 from goldsignal.strategy import account_fit, compare_pattern, gate, levels, setup
 from goldsignal.replay_report import allocate, candidates, replay
+from goldsignal.scalp import scalp_candidate
 
 
 def test_access_and_gemini_storage(db, monkeypatch):
@@ -317,6 +318,36 @@ def test_baseline_replay_delay_and_broker_valid_exits():
     missed = replay(found[0], ticks, 540, [], {**profile, "equity": 100}, costs, REPLAY_START + 2000)
     assert missed["outcome"] == "missed_after_delay"
     assert missed["sizing"]["reason"] == "Minimum lot exceeds your risk limit"
+
+
+def test_scalp_waits_for_closed_m1_and_publishes_once(db):
+    now = REPLAY_START + 61
+    m15 = [dict(time=REPLAY_START + i * 900, open=95 + i, close=96 + i, high=99, low=90)
+           for i in range(-4, 0)]
+    m5 = [dict(time=REPLAY_START + i * 300, open=98, close=99, high=100, low=98)
+          for i in range(-7, 0)]
+    m5[-1].update(close=101, high=101.5)
+    m1 = [dict(time=REPLAY_START, open=100.1, close=100.5, high=100.7, low=100)]
+    quote = dict(time=now, bid=100.40, ask=100.48, available=True)
+    snapshot = dict(now=now, bars=m15, frames={"M5": m5, "M1": m1}, quote=quote, ticks=[quote],
+                    spec=demo_spec(now), cursor=now, closed=False)
+    assert scalp_candidate({**snapshot, "now": now - 2}, m5, m1)[0] is None
+    assert scalp_candidate(snapshot, m5, [{**m1[0], "time": REPLAY_START - 60}])[0] is None
+    scalp, _ = scalp_candidate(snapshot, m5, m1)
+    assert scalp["direction"] == "BUY" and scalp["expiry"] == REPLAY_START + 180
+    assert gate(scalp, {**quote, "bid": 100.20}, now)[0] == "WAIT"
+
+    class Source:
+        def read(self, *args):
+            return snapshot.copy()
+
+    for revision in range(1, 3):
+        worker.process(Source(), 0, None, {}, revision)
+    with store.transaction() as data:
+        saved = data.all("signal")
+        assert len(saved) == 1 and saved[0]["strategy"] == "M5 setup / M1 entry"
+        entry = [row for row in data.all("alert") if row["kind"] == "ENTRY"]
+        assert len(entry) == 1 and "M5/M1 scalp" in entry[0]["title"] and "frame=M1" in entry[0]["url"]
 
 
 def test_shared_alerts_require_only_push_opt_in(db):

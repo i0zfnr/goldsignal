@@ -13,7 +13,7 @@ def advance(signal, quote, now, can_fill, costs):
             return [("EXPIRED", signal["stop"])]
         if quote and can_fill and signal["entry"][0] <= executable(signal, quote) <= signal["entry"][1]:
             signal.update(status="FILLED", fill=executable(signal, quote), filled_at=now,
-                          holding_until=now + HOLD_TTL)
+                          holding_until=now + signal.get("hold_seconds", HOLD_TTL))
             return [("FILLED", signal["stop"])]
     if status != "FILLED" or not quote:
         return []

@@ -55,12 +55,12 @@ class Store:
     def delete(self, kind, key):
         self.conn.execute(records.delete().where(self.where(kind, key)))
 
-    def chart(self, after=None, frame="M15"):
+    def chart(self, after=None, frame="M15", limit=250):
         candle_scope = scope if frame == "M15" else f"{scope}:{frame}"
         query = select(candles.c.payload).where(candles.c.scope == candle_scope)
         if after is not None:
             return list(self.conn.scalars(query.where(candles.c.revision > after).order_by(candles.c.time)))
-        return list(reversed(list(self.conn.scalars(query.order_by(candles.c.time.desc()).limit(250)))))
+        return list(reversed(list(self.conn.scalars(query.order_by(candles.c.time.desc()).limit(limit)))))
 
     def save_bars(self, bars, revision, frame="M15"):
         if not bars:

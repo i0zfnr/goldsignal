@@ -17,6 +17,7 @@ from .alerts import add_alert, send_pending
 from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
 from .lifecycle import advance
 from .market import MT5, Replay
+from .scalp import scalp_candidate
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
 
@@ -69,9 +70,10 @@ def gemini_review(settings, candidate, snapshot, calendar):
     try:
         key = encryption().decrypt(settings["ciphertext"].encode()).decode()
         setup_data = candidate["evidence"]
-        candle = setup_data["candle"]
+        candle = setup_data.get("trigger", setup_data["candle"])
         evidence = {
             "side": candidate["direction"], "ref": candidate["reference"],
+            "setup_type": "M5 breakout, M1 retest, M15 trend" if candidate.get("strategy") else "M15 rejection, M15/M30/H1 trend",
             "entry": candidate["entry"], "stop": candidate["initial_stop"], "targets": candidate["targets"],
             "swing": setup_data["swing"]["low" if candidate["direction"] == "BUY" else "high"],
             "body": round(candle["close"] - candle["open"], 2),
@@ -83,7 +85,7 @@ def gemini_review(settings, candidate, snapshot, calendar):
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
             headers={"x-goog-api-key": key}, timeout=8,
             json={"contents": [{"parts": [{"text": (
-                'Review one XAUUSD entry. Keep supplied side and levels. Trends M15/M30/H1. '
+                'Review one XAUUSD entry. Keep supplied side and levels. Trend deltas are ordered by timeframe. '
                 'Next4 is historical return in side direction (bps), not a forecast. '
                 'CONFIRM coherent evidence, WAIT uncertainty, REJECT contradiction. Reason max 12 words. '
                 + json.dumps(evidence, separators=(",", ":"))
@@ -168,26 +170,35 @@ def process(source, step, cursor, calendar, revision):
         calendar = news.refresh(True, now, calendar)
     candidate = new_candidate(snapshot)
     scan = snapshot.get("scan", {})
-    model = None
-    configured = False
-    review_provider = "rules"
-    if candidate:
-        with transaction() as store:
-            gemini = store.get("ai", "gemini", {})
-            configured = gemini.get("enabled")
-            stopped = news.manual_pause(store, utc_now())
-            published = store.get("signal", candidate["id"]) if configured or REVIEW != "rules" else None
-            prior = store.get("candidate", candidate["id"]) if configured or REVIEW != "rules" else None
-        if configured or REVIEW != "rules":
-            review_provider = "gemini" if configured else REVIEW
-            model = prior.get("model") if prior and prior.get("review_provider", REVIEW) == review_provider else None
-            pause = news.restriction(calendar, now, DEMO) if configured else None
-            if not stopped and not published and not model and gate(candidate, snapshot["quote"], now, pause)[0] == "CONFIRM":
-                model = (gemini_review(gemini, candidate, snapshot, calendar) if configured
-                         else model_review(candidate, snapshot, calendar))
-                if not DEMO:
-                    snapshot = source.read(cursor, step, utc_now())
-    review_gate = model or (("WAIT", "Waiting for Gemini review") if configured else None)
+    frames = snapshot.get("frames", {})
+    scalp = None
+    scalp_scan = "Waiting for the M5 and M1 feed."
+    with transaction() as store:
+        gemini = store.get("ai", "gemini", {})
+        stopped = news.manual_pause(store, utc_now())
+        if "M5" in frames and "M1" in frames:
+            def recent(frame):
+                bars = {bar["time"]: bar for bar in store.chart(frame=frame, limit=12)}
+                bars.update({bar["time"]: bar for bar in frames[frame]})
+                return [bars[time] for time in sorted(bars)[-12:]]
+            scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
+        pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
+        previous = {item["id"]: store.get("candidate", item["id"]) for item in pending}
+    configured = gemini.get("enabled")
+    provider = "gemini" if configured else REVIEW
+    reviews = {}
+    reviewed = False
+    for item in pending:
+        prior = previous[item["id"]]
+        model = prior.get("model") if prior and prior.get("review_provider", REVIEW) == provider else None
+        pause = news.restriction(calendar, now, DEMO) if configured else None
+        if not stopped and not model and provider != "rules" and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM":
+            model = (gemini_review(gemini, item, snapshot, calendar) if configured else
+                     model_review(item, snapshot, calendar))
+            reviewed = True
+        reviews[item["id"]] = model
+    if reviewed and not DEMO:
+        snapshot = source.read(cursor, step, utc_now())
     with transaction() as store:
         stopped = news.manual_pause(store, utc_now())
         track(store, "signal", snapshot, calendar, stopped)
@@ -196,34 +207,41 @@ def process(source, step, cursor, calendar, revision):
         quote = snapshot["quote"]
         if stopped:
             scan["reason"] = "New entries paused by admin."
-        if candidate and not store.get("signal", candidate["id"]):
+            scalp_scan = scan["reason"]
+        for item in pending:
+            key = item["id"]
+            model = reviews[key]
+            review_gate = model or (("WAIT", "Waiting for Gemini review") if configured else None)
             decision, reason = (("WAIT", scan["reason"]) if stopped else
-                                evaluate(candidate, quote, now, calendar, review_gate))
-            baseline, baseline_reason = gate(candidate, quote, now)
-            key = candidate["id"]
-            evidence = store.get("candidate", key, {})
+                                evaluate(item, quote, now, calendar, review_gate))
+            baseline, baseline_reason = gate(item, quote, now)
+            evidence = previous[key] or {}
             first = evidence.get("first", dict(time=now, quote=quote, calendar=calendar, result=decision, reason=reason))
-            store.put("candidate", key, {**candidate, "first": first, "evaluated": now, "decision": decision,
+            store.put("candidate", key, {**item, "first": first, "evaluated": now, "decision": decision,
                                         "reason": reason, "quote": quote, "calendar_sources": calendar.get("sources", {}),
                                         "calendar_reason": news.restriction(calendar, now, DEMO),
                                         "baseline": baseline, "baseline_reason": baseline_reason, "model": model,
-                                        "review_provider": review_provider})
+                                        "review_provider": provider})
+            if item.get("strategy"):
+                scalp_scan = f"{decision}: {reason}"
             if not stopped and baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
-                store.put("shadow", key, dict(candidate, exits=[], created=now))
+                store.put("shadow", key, dict(item, exits=[], created=now))
             if decision == "CONFIRM":
-                now = snapshot["now"] if DEMO else utc_now()
-                if evaluate(candidate, quote, now, calendar, review_gate)[0] == "CONFIRM":
-                    candidate.update(created=now)
+                publish_time = snapshot["now"] if DEMO else utc_now()
+                if evaluate(item, quote, publish_time, calendar, review_gate)[0] == "CONFIRM":
+                    item.update(created=publish_time)
                     if model:
-                        candidate["review"] = {"provider": review_provider, "reason": model[1]}
-                    store.put("signal", key, candidate)
-                    record_event(store, candidate, "ENTRY", now)
+                        item["review"] = {"provider": provider, "reason": model[1]}
+                    store.put("signal", key, item)
+                    record_event(store, item, "ENTRY", publish_time)
+                    if item.get("strategy"):
+                        scalp_scan = f"{item['direction']} scalp signal published."
         store.save_bars(snapshot["bars"], revision)
         for frame, bars in snapshot.get("frames", {}).items():
             store.save_bars(bars, revision, frame)
         store.put("state", "market", dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
-                  revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, error=None))
+                  revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan, error=None))
     return snapshot
 
 

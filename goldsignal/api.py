@@ -114,6 +114,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             symbol=SYMBOL, mode=MODE, status=status, clock=now, quote=quote, heartbeat=state.get("heartbeat"),
             error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after, frame), frame=frame,
             scan=state.get("scan") if status != "STALE" else None,
+            scalp_scan=state.get("scalp_scan") if status != "STALE" else None,
             session=window, active=public(selected) if selected else None,
             entry_check=entry_snapshot(store, selected, state, wall) if selected else None,
             history=[public(item) for item in history[:15]],

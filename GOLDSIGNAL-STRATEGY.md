@@ -28,6 +28,20 @@ Automated Gemini review uses up to **six requests per UTC day** across all sessi
 
 ## Entry and exit levels
 
+### M5 setup with M1 entry
+
+The scalp lane runs beside the original M15 baseline. Its latest scan, published signals and alerts have their own label.
+
+1. A closed directional M5 candle must break the preceding six M5 highs or lows. Four consecutive closed M15 candles must show net movement in the same direction.
+2. After the M5 close, look for the first closed M1 retest within five minutes. Its wick must be within 20% of the prior six M5 candles' average range from the breakout boundary. Its body must point in the setup direction and the close must reclaim the breakout side.
+3. Use the M1 close as the entry reference and the retest wick as the stop anchor. The stop buffer is 10% of the average M5 range, with a floor of 0.10 price units. The entry zone allows a pullback of up to 0.25 initial R. Targets are 1R, 1.5R and 2R from the M1 close.
+4. The entry expires after two minutes from confirmation or sooner at the end of the setup or entry session. Spread cannot exceed the lower of the regular spread limit and 20% of initial R. The simulated holding limit is 30 minutes.
+5. Both lanes use the broker quote, news and manual pause checks. Both share the existing Gemini review budget and alert pipeline. A scalp alert opens the M1 chart. Simultaneous signals remain independent paper simulations.
+
+The settings above are initial rules for testing. A broker-tick replay with alert delay and costs is needed before drawing conclusions about scalp performance.
+
+### Original M15 baseline
+
 Let `E` be the closed rejection candle’s close. All offsets below are XAUUSD price units.
 
 | Direction | Entry zone | Initial stop | TP1 | TP2 | TP3 |

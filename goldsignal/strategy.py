@@ -122,7 +122,7 @@ def gate(signal, quote, now, news_reason=None, *, window=None):
         return "WAIT", "Broker quote unavailable or stale"
     if quote.get("permission") not in (None, "BOTH", signal["direction"]):
         return "REJECT", "Broker symbol does not allow this direction"
-    if quote["ask"] - quote["bid"] > MAX_SPREAD:
+    if quote["ask"] - quote["bid"] > signal.get("max_spread", MAX_SPREAD):
         return "WAIT", "Spread exceeds configured limit"
     if not signal["entry"][0] <= executable(signal, quote) <= signal["entry"][1]:
         return "WAIT", "Executable quote is outside the entry zone"

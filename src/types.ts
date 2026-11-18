@@ -8,6 +8,7 @@ type Pattern = { rsi8: number | null; history: number; matches: number; next4_bp
 type Evidence = { reason: string; grade: string; pattern?: Pattern };
 export type Signal = {
   id: string; direction: "BUY" | "SELL"; created: number; expiry: number;
+  strategy?: string;
   entry: [number, number]; initial_stop: number; stop: number; reference: number;
   targets: number[]; fill: number | null; status: string; hits: number;
   evidence: Evidence;
@@ -25,6 +26,7 @@ export type Dashboard = {
   candidate: { decision: string; reason: string; evidence: Evidence } | null;
   entry_check?: EntryCheck | null;
   scan?: { reason: string; closed_at?: number } | null;
+  scalp_scan?: string | null;
   calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };
   alerts: { id: string; title: string; body: string; time: number; url: string; delivery: string }[];

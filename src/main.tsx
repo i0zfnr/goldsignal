@@ -71,7 +71,10 @@ function App({ role, signOut, expired, settings }: {
   role: string | null; signOut: () => Promise<void>; expired: () => void; settings?: ReactNode;
 }) {
   const page = settings ? "/admin" : "/";
-  const [frame, setFrame] = useState<Frame>("M15");
+  const [frame, setFrame] = useState<Frame>(() => {
+    const requested = new URLSearchParams(location.search).get("frame");
+    return frames.find(value => value === requested) ?? "M15";
+  });
   const [openedEntry, setOpenedEntry] = useState<{ signal: string; check: EntryCheck } | null>(null);
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
@@ -177,6 +180,7 @@ function App({ role, signOut, expired, settings }: {
             </div>
             {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to latest signal</a>}
             {signal ? <>
+              <p className="small muted">{signal.strategy ?? "M15 baseline"}</p>
               <div className="entry-value"><span>Entry zone</span><strong>{price(signal.entry[0])}–{price(signal.entry[1])}</strong></div>
               <dl className="levels"><div><dt>Current SL</dt><dd className="warn">{price(signal.stop)}</dd></div>
                 {signal.targets.map((target, i) => <div key={target}><dt>TP{i + 1}{signal.hits > i ? " ✓" : ""}</dt><dd className="good">{price(target)} <small>{Math.round(Math.abs(target - signal.reference) / 0.10)} pips</small></dd></div>)}
@@ -194,7 +198,8 @@ function App({ role, signOut, expired, settings }: {
                 At alert open · {openedEntry.check.side} {price(openedEntry.check.price)} · {openedEntry.check.valid ? "Valid" : openedEntry.check.reason}
               </p>}
             </> : <p className="muted">{selected ? "Signal unavailable." : "Waiting for a confirmed setup."}</p>}
-            {data?.scan && <p className="gate">{data.scan.reason}{data.scan.closed_at && <span className="muted"> · M15 close {displayTime(data.scan.closed_at)} MYT</span>}</p>}
+            {data?.scan && <p className="gate"><strong>M15 baseline</strong> · {data.scan.reason}{data.scan.closed_at && <span className="muted"> · Closed {displayTime(data.scan.closed_at)} MYT</span>}</p>}
+            {data?.scalp_scan && <p className="gate"><strong>M5 setup / M1 entry</strong> · {data.scalp_scan}</p>}
             {data?.candidate && <p className="gate">Last candidate · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
             {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
           </section>
@@ -202,7 +207,7 @@ function App({ role, signOut, expired, settings }: {
             <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
             {data?.history.length ? <ul className="rows">{data.history.map(item =>
               <li key={item.id}><div><a href={`${page}?signal=${item.id}#signal`} onClick={event => select(event, item.id)}>{item.direction} · {price(item.reference)}</a>
-                <p className="muted small">{displayTime(item.created)} MYT</p></div><span>{item.status}</span></li>)}</ul> : <p className="muted">No signals saved yet.</p>}
+                <p className="muted small">{item.strategy ?? "M15 baseline"} · {displayTime(item.created)} MYT</p></div><span>{item.status}</span></li>)}</ul> : <p className="muted">No signals saved yet.</p>}
             <details><summary>Lifecycle and comparison</summary>
               {data?.events.map(event => <p className="small" key={event.id}>{displayTime(event.time)} MYT · {event.kind} · SL {price(event.stop)}{event.note ? ` · ${event.note}` : ""}</p>)}
               {data && (["with_news", "without_news"] as const).map(key => {

@@ -17,16 +17,18 @@ def add_alert(store, profile_id, signal, kind, ts):
     if store.get("alert", key):
         return
     entry = kind == "ENTRY"
-    title = f"{'DEMO · ' if MODE == 'demo' else ''}{signal['symbol']} {signal['direction']} · {kind}"
+    label = " · M5/M1 scalp" if signal.get("strategy") else ""
+    title = f"{'DEMO · ' if MODE == 'demo' else ''}{signal['symbol']} {signal['direction']}{label} · {kind}"
     body = f"Entry {signal['entry'][0]:.2f}–{signal['entry'][1]:.2f} · SL {signal['stop']:.2f}" if entry else (
         f"Simulated tracking · stop {signal['stop']:.2f}"
     )
     if kind == "TP1" and signal["fill"] != signal["reference"]:
         body += " · moved to reference"
+    frame = "&frame=M1" if signal.get("strategy") else ""
     settings = store.get("push", profile_id, {})
     store.put("alert", key, dict(id=key, profile=profile_id, signal=signal["id"], kind=kind, time=ts,
                                 valid_until=signal["expiry"] if entry else ts + 3600,
-                                title=title, body=body, url=f"/?signal={signal['id']}&alert=1#signal",
+                                title=title, body=body, url=f"/?signal={signal['id']}&alert=1{frame}#signal",
                                 delivery="queued" if settings else "preview", attempts=0))
 
 
