@@ -105,6 +105,51 @@ def test_gemini_caps_and_invalid_review_hold(db, monkeypatch, model, token_cap, 
     assert len(calls) == 6
 
 
+def test_gemini_503_retries_only_while_entry_is_valid(db, monkeypatch):
+    import httpx
+
+    key = Fernet.generate_key()
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", key.decode())
+    with store.transaction() as data:
+        data.put("ai", "gemini", {"enabled": True, "ciphertext": Fernet(key).encrypt(b"test").decode()})
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append(url)
+        request = httpx.Request("POST", url)
+        if len(calls) == 1:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, request=request, json={
+            "candidates": [{"content": {"parts": [{"text": '{"decision":"CONFIRM","reason":"Valid setup."}'}]}}],
+        })
+
+    monkeypatch.setattr(worker.httpx, "post", post)
+    snapshot = sample()
+
+    class Source:
+        def read(self, *args):
+            return snapshot.copy()
+
+    worker.process(Source(), 0, None, {}, 1)
+    with store.transaction() as data:
+        assert data.all("candidate")[0]["gemini_retry"]["failures"] == 1
+        assert not data.all("signal")
+    snapshot["now"] += 1
+    worker.process(Source(), 0, None, {}, 2)
+    assert len(calls) == 1
+    snapshot["now"] += 2
+    good_quote = snapshot["quote"]
+    snapshot["quote"] = {**good_quote, "bid": 3700, "ask": 3700.25}
+    worker.process(Source(), 0, None, {}, 3)
+    assert len(calls) == 1
+    snapshot["quote"] = good_quote
+    worker.process(Source(), 0, None, {}, 4)
+    worker.process(Source(), 0, None, {}, 5)
+    with store.transaction() as data:
+        assert len(calls) == data.get("ai_usage", "gemini")["count"] == 2
+        assert len(data.all("signal")) == len(data.all("alert")) == 1
+
+
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.sqlite3'}")

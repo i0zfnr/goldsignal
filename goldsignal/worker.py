@@ -23,6 +23,11 @@ from .strategy import gate, levels, setup
 
 log = logging.getLogger(__name__)
 DEMO = MODE == "demo"
+GEMINI_RETRY_DELAYS = (3, 8)
+
+
+class GeminiTemporaryError(Exception):
+    pass
 
 
 def evaluate(signal, quote, now, calendar, model=None):
@@ -102,6 +107,12 @@ def gemini_review(settings, candidate, snapshot, calendar):
         if result["decision"] not in ("CONFIRM", "WAIT", "REJECT") or not isinstance(reason, str) or not reason.strip():
             raise ValueError("Invalid Gemini decision")
         return result["decision"], " ".join(reason.split()[:12])[:160]
+    except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+        if isinstance(exc, httpx.TransportError) or exc.response.status_code in (500, 502, 503, 504):
+            log.warning("Gemini temporarily unavailable (%s)", type(exc).__name__)
+            raise GeminiTemporaryError from exc
+        log.warning("Gemini review unavailable (HTTP %s)", exc.response.status_code)
+        return "WAIT", "Gemini review unavailable"
     except Exception as exc:
         log.warning("Gemini review unavailable (%s)", type(exc).__name__)
         return "WAIT", "Gemini review unavailable"
@@ -188,16 +199,30 @@ def process(source, step, cursor, calendar, revision):
     configured = gemini.get("enabled")
     provider = "gemini" if configured else REVIEW
     reviews = {}
+    retries = {}
     reviewed = False
     for item in pending:
         prior = previous[item["id"]]
-        model = prior.get("model") if prior and prior.get("review_provider", REVIEW) == provider else None
+        same_provider = prior and prior.get("review_provider", REVIEW) == provider
+        model = prior.get("model") if same_provider else None
+        retry = prior.get("gemini_retry") if same_provider and configured else None
         pause = news.restriction(calendar, now, DEMO) if configured else None
-        if not stopped and not model and provider != "rules" and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM":
-            model = (gemini_review(gemini, item, snapshot, calendar) if configured else
-                     model_review(item, snapshot, calendar))
+        if (not stopped and (not model or (retry and now >= retry["after"])) and provider != "rules"
+                and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
+            try:
+                model = (gemini_review(gemini, item, snapshot, calendar) if configured else
+                         model_review(item, snapshot, calendar))
+                retry = None
+            except GeminiTemporaryError:
+                failures = retry["failures"] + 1 if retry else 1
+                clock = snapshot["now"] if DEMO else utc_now()
+                after = clock + GEMINI_RETRY_DELAYS[failures - 1] if failures <= len(GEMINI_RETRY_DELAYS) else None
+                retry = {"failures": failures, "after": after} if after is not None and after < item["expiry"] else None
+                model = ("WAIT", "Gemini temporarily unavailable. Retry scheduled." if retry else
+                         "Gemini unavailable. No retry remains for this entry.")
             reviewed = True
         reviews[item["id"]] = model
+        retries[item["id"]] = retry
     if reviewed and not DEMO:
         snapshot = source.read(cursor, step, utc_now())
     with transaction() as store:
@@ -222,7 +247,7 @@ def process(source, step, cursor, calendar, revision):
                                         "reason": reason, "quote": quote, "calendar_sources": calendar.get("sources", {}),
                                         "calendar_reason": news.restriction(calendar, now, DEMO),
                                         "baseline": baseline, "baseline_reason": baseline_reason, "model": model,
-                                        "review_provider": provider})
+                                        "review_provider": provider, "gemini_retry": retries[key]})
             if item.get("strategy"):
                 scalp_scan = f"{decision}: {reason}"
             if not stopped and baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
