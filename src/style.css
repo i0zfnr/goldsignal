@@ -104,6 +104,10 @@ h1 span { font-size: 0.54em; font-weight: 500; color: var(--muted); margin-left:
 .chart-shell { position: relative; }
 .chart { width: 100%; height: clamp(285px, 53svh, 565px); }
 .entry-shade { pointer-events: none; position: absolute; inset-inline-start: 0; background: #e7c77815; }
+.trade-box { position: absolute; pointer-events: none; overflow: hidden; }
+.trade-reward { background: #6abca433; border-block: 1px solid var(--buy); }
+.trade-risk { background: #ed8b7e33; border-block: 1px solid var(--sell); }
+.trade-box span { display: block; padding-inline: 4px; font-size: .76rem; white-space: nowrap; }
 .chart-footer { display: flex; gap: 14px; flex-wrap: wrap; padding: 9px 14px; font-size: 0.76rem; color: var(--muted); border-top: 1px solid var(--line); }
 .chart-footer span { display: flex; align-items: center; gap: 6px; }
 .key { width: 9px; height: 2px; background: var(--gold); }
@@ -156,3 +160,4 @@ footer { padding-block: 20px; font-size: 0.8rem; color: var(--muted); }
   .candle-clock { flex-basis: 100%; padding: 0; border: 0; }
   .session-strip strong { font-size: 0.77rem; }
 }
+.push-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 10px; }

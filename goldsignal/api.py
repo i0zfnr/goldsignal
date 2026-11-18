@@ -16,6 +16,7 @@ from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
 from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import admin, identity, router
+from .alerts import device_key, queue_test
 from .chat import router as chat_router
 from .diagnostics import record
 from .strategy import executable, gate
@@ -165,8 +166,11 @@ class PushKeys(BaseModel):
     auth: str = Field(pattern=r"^[\w-]{15,30}$")
 
 
-class Subscription(BaseModel):
+class PushDevice(BaseModel):
     endpoint: str = Field(max_length=3000)
+
+
+class Subscription(PushDevice):
     keys: PushKeys
 
 
@@ -185,14 +189,53 @@ def subscribe(subscription: Subscription, request: Request, response: Response):
     ):
         raise HTTPException(422, "Unsupported Web Push endpoint")
     with transaction() as store:
-        store.put("push", key, subscription.model_dump())
+        for legacy_id, saved in store.items("push"):
+            if not legacy_id.startswith("device:") and saved.get("endpoint") == subscription.endpoint:
+                store.delete("push", legacy_id)
+        store.put("push", device_key(subscription.endpoint), {**subscription.model_dump(), "owner": key})
     return {"enabled": True}
 
 
-@app.delete("/api/push")
-def unsubscribe(request: Request, response: Response):
+def registered_device(store, owner, endpoint):
+    recipient = device_key(endpoint)
+    saved = store.get("push", recipient)
+    if saved and saved.get("owner") == owner:
+        return recipient
+    legacy = store.get("push", owner)
+    if legacy and legacy.get("endpoint") == endpoint:
+        return owner
+    return None
+
+
+@app.post("/api/push/status")
+def push_status(device: PushDevice, request: Request, response: Response):
+    owner = get_id(request, response)
     with transaction() as store:
-        store.delete("push", get_id(request, response))
+        recipient = registered_device(store, owner, device.endpoint)
+        test = store.get("alert", f"{recipient}:test", {}) if recipient else {}
+    return {"enabled": recipient is not None, "test": test.get("delivery")}
+
+
+@app.post("/api/push/test")
+def test_push(device: PushDevice, request: Request, response: Response):
+    owner = get_id(request, response)
+    with transaction() as store:
+        recipient = registered_device(store, owner, device.endpoint)
+        if recipient is None:
+            raise HTTPException(409, "Enable notifications on this device first.")
+        if not os.getenv("VAPID_PRIVATE_KEY_FILE"):
+            raise HTTPException(503, "Push delivery is unavailable.")
+        queue_test(store, recipient, utc_now())
+    return {"queued": True}
+
+
+@app.delete("/api/push")
+def unsubscribe(request: Request, response: Response, device: PushDevice | None = None):
+    owner = get_id(request, response)
+    with transaction() as store:
+        recipient = registered_device(store, owner, device.endpoint) if device else owner
+        if recipient:
+            store.delete("push", recipient)
     return {"enabled": False}
 
 

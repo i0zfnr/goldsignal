@@ -11,6 +11,7 @@ export type Signal = {
   strategy?: string;
   entry: [number, number]; initial_stop: number; stop: number; reference: number;
   targets: number[]; fill: number | null; status: string; hits: number;
+  filled_at?: number; exits?: { time: number; price: number; kind: string }[];
   evidence: Evidence;
   review?: { provider: string; reason: string };
 };

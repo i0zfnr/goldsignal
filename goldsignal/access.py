@@ -187,6 +187,9 @@ def revoke_key(id: str, request: Request):
             raise HTTPException(404, "Access key not found.")
         store.put("access_key", id, {**grant, "revoked": True})
         store.delete("push", id)
+        for device, subscription in store.items("push"):
+            if subscription.get("owner") == id:
+                store.delete("push", device)
     return {"revoked": True}
 
 

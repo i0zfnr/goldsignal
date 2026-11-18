@@ -468,13 +468,47 @@ def test_shared_alerts_require_only_push_opt_in(db):
         tick(0)
         with store.transaction() as data:
             assert len([a for a in data.all("alert") if a["delivery"] == "queued"]) == 2
-        assert second.delete("/api/push").status_code == 200
+        removed = {"endpoint": "https://fcm.googleapis.com/fcm/send/viewer-1"}
+        assert second.request("DELETE", "/api/push", json=removed).status_code == 200
         for step in range(1, 5):
             tick(step)
         with store.transaction() as data:
             tp1 = [a for a in data.all("alert") if a["kind"] == "TP1"]
             assert sorted(a["delivery"] for a in tp1) == ["preview", "queued"]
         assert first.get("/api/dashboard").json()["alerts"] == second.get("/api/dashboard").json()["alerts"]
+
+
+def test_push_registration_and_test_delivery_are_device_specific(db, monkeypatch):
+    monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", "fixture.pem")
+    monkeypatch.setenv("VAPID_SUBJECT", "mailto:test@example.com")
+    sent = []
+    monkeypatch.setattr(alerts, "webpush", lambda subscription, *args, **kwargs: sent.append(subscription["endpoint"]))
+    devices = [{"endpoint": f"https://fcm.googleapis.com/fcm/send/device-{index}"} for index in range(2)]
+    with TestClient(app) as owner, TestClient(app) as other:
+        for device in devices:
+            assert owner.put("/api/push", json={**device, "keys": {"p256dh": "A" * 87, "auth": "B" * 22}}).status_code == 200
+        assert not other.post("/api/push/status", json=devices[0]).json()["enabled"]
+        assert other.post("/api/push/test", json=devices[0]).status_code == 409
+        assert owner.post("/api/push/test", json=devices[0]).json()["queued"]
+        alerts.send_pending(config.utc_now())
+        assert sent == [devices[0]["endpoint"]]
+        assert owner.post("/api/push/status", json=devices[0]).json() == {"enabled": True, "test": "sent"}
+        assert owner.request("DELETE", "/api/push", json=devices[0]).status_code == 200
+        assert owner.post("/api/push/status", json=devices[1]).json()["enabled"]
+
+
+def test_rolling_entry_cap_waits_for_an_open_slot(db):
+    now = sample()["now"]
+    with store.transaction() as data:
+        for index, age in enumerate((3599, 30)):
+            data.put("signal", f"prior-{index}", {"status": "STOPPED", "created": now - age})
+    tick(0)
+    with store.transaction() as data:
+        assert len(data.all("signal")) == 2
+        assert data.all("candidate")[0]["reason"] == worker.ENTRY_LIMIT_REASON
+    tick(1)
+    with store.transaction() as data:
+        assert len(data.all("signal")) == 3
 
 
 def test_news_counterfactual(db):
@@ -519,6 +553,9 @@ def test_push_transient_failure_retries_once_and_deduplicates(db, monkeypatch):
     with store.transaction() as data:
         data.put("push", "demo", {"endpoint": "fixture"})
     tick(0)
+    with store.transaction() as data:
+        signal = data.all("signal")[0]
+        data.put("signal", signal["id"], {**signal, "status": "FILLED"})
     alerts.send_pending(REPLAY_START)
     alerts.send_pending(REPLAY_START)
     assert len(calls) == 1

@@ -13,6 +13,7 @@ const pending = new Map();
 const nonces = new Map();
 const routes = new Set([
   "GET /api/dashboard", "PUT /api/push", "DELETE /api/push",
+  "POST /api/push/status", "POST /api/push/test",
   "GET /api/auth/session", "DELETE /api/auth/session", "POST /api/auth/admin", "POST /api/auth/viewer",
   "GET /api/admin/settings", "POST /api/admin/keys", "DELETE /api/admin/keys", "PUT /api/admin/gemini",
   "GET /api/admin/chat", "POST /api/admin/chat",

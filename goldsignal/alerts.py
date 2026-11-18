@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from hashlib import sha256
 
 from pywebpush import WebPushException, webpush
 
@@ -11,6 +12,21 @@ from .store import transaction
 from .strategy import gate
 
 log = logging.getLogger(__name__)
+
+
+def device_key(endpoint):
+    return "device:" + sha256(endpoint.encode()).hexdigest()
+
+
+def queue_test(store, recipient, now):
+    key = f"{recipient}:test"
+    previous = store.get("alert", key)
+    if previous and (previous["delivery"] == "queued" or now - previous["time"] < 30):
+        return
+    store.put("alert", key, dict(id=key, profile=recipient, signal=None, kind="TEST", time=now,
+                                valid_until=now + 120, title="Goldsignal test notification",
+                                body="Notifications are working on this device.", url="/#alerts",
+                                delivery="queued", attempts=0))
 
 
 def add_alert(store, profile_id, signal, kind, ts):
@@ -43,13 +59,14 @@ def send_pending(now):
         with transaction() as store:
             subscription = store.get("push", alert["profile"])
             state = store.get("state", "market", {})
-            clock = state.get("now", now) if MODE == "demo" else utc_now()
+            clock = state.get("now", now) if MODE == "demo" and alert["kind"] != "TEST" else utc_now()
             signal = store.get("signal", alert["signal"])
             eligible = True
             if alert["kind"] == "ENTRY":
                 pause = restriction(state.get("calendar", {}), clock, MODE == "demo")
                 quote = state.get("quote") if utc_now() - state.get("heartbeat", 0) <= 30 else None
-                eligible = bool(not manual_pause(store, utc_now()) and signal and signal["status"] == "PENDING" and
+                eligible = bool(not manual_pause(store, utc_now()) and signal and
+                                signal["status"] in ("PENDING", "FILLED") and not signal.get("hits") and
                                 gate(signal, quote, clock, pause)[0] == "CONFIRM")
         if not subscription or clock >= alert["valid_until"] or not eligible:
             alert["delivery"] = "expired"

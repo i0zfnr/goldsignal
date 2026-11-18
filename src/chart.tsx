@@ -9,14 +9,18 @@ type ChartState = {
   chart: IChartApi; series: ISeriesApi<"Candlestick">; lines: IPriceLine[];
   data: Map<number, Candle>; last?: UTCTimestamp;
 };
+const frameSeconds: Record<Frame, number> = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400 };
 
 export function Chart({ candles, signal, frame, quote }: {
   candles: Candle[]; signal: Signal | null; frame: Frame; quote: { bid: number; ask: number } | null;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const shade = useRef<HTMLDivElement>(null);
+  const rewardBox = useRef<HTMLDivElement>(null);
+  const riskBox = useRef<HTMLDivElement>(null);
   const state = useRef<ChartState | null>(null);
   const zone = useRef<[number, number] | null>(null);
+  const closed = useRef<{ start: number; end: number; fill: number; stop: number; target: number } | null>(null);
   const scaleRange = useRef<number[]>([]);
   const liveLines = useRef<IPriceLine[]>([]);
   useEffect(() => {
@@ -65,11 +69,43 @@ export function Chart({ candles, signal, frame, quote }: {
           }
         }
       }
+      const trade = closed.current;
+      if (!trade) {
+        if (rewardBox.current) rewardBox.current.hidden = true;
+        if (riskBox.current) riskBox.current.hidden = true;
+        animation = requestAnimationFrame(positionBand);
+        return;
+      }
+      const last = state.current?.last;
+      const scale = chart.timeScale();
+      const seconds = frameSeconds[frame];
+      const candleTime = (stamp: number) =>
+        (last! + Math.floor((stamp - last!) / seconds) * seconds) as UTCTimestamp;
+      const left = last !== undefined ? scale.timeToCoordinate(candleTime(trade.start)) : null;
+      const right = last !== undefined ? scale.timeToCoordinate(candleTime(trade.end)) : null;
+      const width = scale.width();
+      const height = chart.panes()[0].getHeight();
+      const halfBar = scale.options().barSpacing / 2;
+      const fill = series.priceToCoordinate(trade.fill);
+      function draw(box: HTMLDivElement | null, level: number | undefined) {
+        if (!box) return;
+        const y = level === undefined ? null : series.priceToCoordinate(level);
+        box.hidden = left == null || right == null || fill == null || y == null;
+        if (left == null || right == null || fill == null || y == null) return;
+        const start = Math.max(0, left - halfBar);
+        const top = Math.max(0, Math.min(fill, y));
+        box.style.left = `${start}px`;
+        box.style.top = `${top}px`;
+        box.style.width = `${Math.max(0, Math.min(width, right + halfBar) - start)}px`;
+        box.style.height = `${Math.max(0, Math.min(height, Math.max(fill, y)) - top)}px`;
+      }
+      draw(rewardBox.current, trade.target);
+      draw(riskBox.current, trade.stop);
       animation = requestAnimationFrame(positionBand);
     }
     animation = requestAnimationFrame(positionBand);
     return () => { cancelAnimationFrame(animation); chart.remove(); state.current = null; liveLines.current = []; };
-  }, []);
+  }, [frame]);
 
   useEffect(() => {
     const current = state.current;
@@ -100,17 +136,29 @@ export function Chart({ candles, signal, frame, quote }: {
     }
   }, [candles]);
 
-  const entryLow = signal?.entry[0], entryHigh = signal?.entry[1], stop = signal?.stop;
-  const target1 = signal?.targets[0], target2 = signal?.targets[1], target3 = signal?.targets[2];
+  const active = signal?.status === "PENDING" || signal?.status === "FILLED";
+  const entryLow = active ? signal.entry[0] : undefined, entryHigh = active ? signal.entry[1] : undefined;
+  const stop = active ? signal.stop : undefined;
+  const target1 = active && signal.hits < 1 ? signal.targets[0] : undefined;
+  const target2 = active && signal.hits < 2 ? signal.targets[1] : undefined;
+  const target3 = active && signal.hits < 3 ? signal.targets[2] : undefined;
+  const closedAt = signal?.status === "STOPPED" || signal?.status === "COMPLETED" ? signal.exits?.at(-1)?.time : undefined;
+  const fill = signal?.fill, filledAt = signal?.filled_at, initialStop = signal?.initial_stop;
+  const finalTarget = signal?.targets.at(-1);
+  const outcome = closedAt === undefined ? undefined : signal?.status === "STOPPED"
+    ? (signal.hits ? `Stopped after TP${signal.hits}` : "Stopped") : "All targets hit";
   useEffect(() => {
     const current = state.current;
     if (!current) return;
     current.lines.forEach((line) => current.series.removePriceLine(line));
     current.lines = [];
+    closed.current = fill != null && filledAt !== undefined && closedAt !== undefined &&
+      initialStop !== undefined && finalTarget !== undefined
+      ? { start: filledAt, end: closedAt, fill, stop: initialStop, target: finalTarget } : null;
     zone.current = entryLow !== undefined && entryHigh !== undefined ? [entryLow, entryHigh] : null;
     const levels: [string, number | undefined, string][] = [
       ["Entry high", entryHigh, "#e7c778"], ["Entry low", entryLow, "#e7c778"],
-      [stop === target1 ? "SL / TP1" : "SL", stop, "#ed8b7e"],
+      ["SL", stop, "#ed8b7e"],
       ["TP1", stop === target1 ? undefined : target1, "#6abca4"],
       ["TP2", target2, "#6abca4"], ["TP3", target3, "#6abca4"],
     ];
@@ -121,7 +169,7 @@ export function Chart({ candles, signal, frame, quote }: {
         axisLabelTextColor: "#121412",
       }));
     }
-  }, [entryLow, entryHigh, stop, target1, target2, target3]);
+  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget]);
   const bid = quote?.bid, ask = quote?.ask;
   useEffect(() => {
     const series = state.current?.series;
@@ -144,5 +192,7 @@ export function Chart({ candles, signal, frame, quote }: {
   return <div className="chart-shell">
     <div ref={host} className="chart" role="img" aria-label={`XAUUSD ${frame} candlestick chart. Exact signal levels are listed below.`} />
     <div ref={shade} className="entry-shade" hidden aria-hidden="true" />
+    <div ref={rewardBox} className="trade-box trade-reward" hidden aria-hidden="true"><span>{outcome}</span></div>
+    <div ref={riskBox} className="trade-box trade-risk" hidden aria-hidden="true" />
   </div>;
 }

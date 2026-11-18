@@ -25,6 +25,8 @@ from .strategy import gate, levels, setup
 log = logging.getLogger(__name__)
 DEMO = MODE == "demo"
 GEMINI_RETRY_DELAYS = (3, 8)
+ENTRY_LIMIT_PER_HOUR = 2
+ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
 
 
 class GeminiTemporaryError(Exception):
@@ -204,6 +206,8 @@ def process(source, step, cursor, calendar, revision):
             scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
         pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
         previous = {item["id"]: store.get("candidate", item["id"]) for item in pending}
+        recent_entries = [signal["created"] for signal in store.all("signal")
+                          if signal["created"] > now - 3600] if pending else []
     configured = gemini.get("enabled")
     provider = "gemini" if configured else REVIEW
     reviews = {}
@@ -215,7 +219,8 @@ def process(source, step, cursor, calendar, revision):
         model = prior.get("model") if same_provider else None
         retry = prior.get("gemini_retry") if same_provider and configured else None
         pause = news.restriction(calendar, now, DEMO) if configured else None
-        if (not stopped and (not model or (retry and now >= retry["after"])) and provider != "rules"
+        if (not stopped and len(recent_entries) < ENTRY_LIMIT_PER_HOUR
+                and (not model or (retry and now >= retry["after"])) and provider != "rules"
                 and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
             try:
                 model = (gemini_review(gemini, item, snapshot, calendar,
@@ -256,6 +261,9 @@ def process(source, step, cursor, calendar, revision):
             decision, reason = (("WAIT", scan["reason"]) if stopped else
                                 evaluate(item, quote, now, calendar, review_gate))
             baseline, baseline_reason = gate(item, quote, now)
+            capped = sum(stamp > now - 3600 for stamp in recent_entries) >= ENTRY_LIMIT_PER_HOUR
+            if not stopped and capped and baseline == "CONFIRM":
+                decision, reason = "WAIT", ENTRY_LIMIT_REASON
             evidence = previous[key] or {}
             first = evidence.get("first", dict(time=now, quote=quote, calendar=calendar, result=decision, reason=reason))
             store.put("candidate", key, {**item, "first": first, "evaluated": now, "decision": decision,
@@ -274,6 +282,7 @@ def process(source, step, cursor, calendar, revision):
                     if model:
                         item["review"] = {"provider": provider, "reason": model[1]}
                     store.put("signal", key, item)
+                    recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
                     if item.get("strategy"):
                         scalp_scan = f"{item['direction']} scalp signal published."

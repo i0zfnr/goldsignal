@@ -18,21 +18,61 @@ const displayTime = (ts: number) => myt.format(ts * 1000);
 const price = (value?: number | null) => value == null ? "–" : number.format(value);
 const currentSignal = () => new URLSearchParams(location.search).get("signal");
 const frames: Frame[] = ["M1", "M5", "M15", "M30", "H1", "H4"];
-function Alerts({ data, reload }: { data: Dashboard; reload: () => void }) {
+type PushStatus = { enabled: boolean; test: "queued" | "sent" | "failed" | "expired" | null };
+
+function Alerts({ data }: { data: Dashboard }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<PushStatus | null>(null);
   const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
-  async function toggle() {
+
+  function deviceRequest<T>(path: string, method: string, endpoint: string) {
+    return api<T>(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint }) });
+  }
+
+  async function check() {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    const result = subscription && Notification.permission === "granted"
+      ? await deviceRequest<PushStatus>("/api/push/status", "POST", subscription.endpoint)
+      : { enabled: false, test: null };
+    setStatus(result);
+  }
+
+  useEffect(() => {
+    if (!supported || !data.push_key) return;
+    const refresh = () => void check().catch(() => setMessage("Could not check notifications on this device."));
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [supported, data.push_key]);
+
+  async function action(work: () => Promise<void>) {
     setBusy(true);
+    setMessage("");
     try {
-      if (!data.push_enabled && await Notification.requestPermission() !== "granted") {
-        throw new Error("Notification permission is blocked.");
+      await work();
+      await check();
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggle() {
+    void action(async () => {
+      if (!status?.enabled && await Notification.requestPermission() !== "granted") {
+        throw new Error("Allow notifications for Goldsignal in your browser or device settings, then try again.");
       }
       const registration = await navigator.serviceWorker.register("/sw.js");
-      if (data.push_enabled) {
-        await api("/api/push", { method: "DELETE" });
-        await (await registration.pushManager.getSubscription())?.unsubscribe();
-        setMessage("Phone alerts disabled.");
+      if (status?.enabled) {
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await deviceRequest("/api/push", "DELETE", subscription.endpoint);
+          await subscription.unsubscribe();
+        }
+        setMessage("Notifications disabled on this device.");
       } else {
         const ready = await navigator.serviceWorker.ready;
         const encoded = data.push_key!.replaceAll("-", "+").replaceAll("_", "/");
@@ -45,21 +85,33 @@ function Alerts({ data, reload }: { data: Dashboard; reload: () => void }) {
           if (!existing) await subscription.unsubscribe();
           throw error;
         }
-        setMessage("Phone alerts enabled.");
+        setMessage("Notifications enabled on this device.");
       }
-    } catch (error) {
-      setMessage((error as Error).message);
-    } finally {
-      setBusy(false);
-      reload();
-    }
+    });
+  }
+
+  function sendTest() {
+    void action(async () => {
+      const subscription = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+      if (!subscription) throw new Error("Enable notifications on this device first.");
+      await deviceRequest("/api/push/test", "POST", subscription.endpoint);
+    });
   }
   return <section id="alerts" className="panel below" aria-labelledby="alerts-title">
-    <div className="panel-heading"><h2 id="alerts-title">Alert preview</h2>
-      {data.push_key && supported && <button disabled={busy} onClick={() => void toggle()}>{data.push_enabled ? "Disable phone alerts" : "Enable phone alerts"}</button>}
+    <div className="panel-heading"><h2 id="alerts-title">Notifications</h2>
+      {data.push_key && supported && <button disabled={busy} onClick={toggle}>{status?.enabled ? "Disable notifications" : "Enable notifications"}</button>}
     </div>
     <p className="muted small">{!data.push_key ? "Phone delivery requires HTTPS and Web Push keys." :
-      !supported ? "Phone delivery requires a browser with Web Push on HTTPS." : "Opt in to receive shared entry and target updates."}</p>
+      !supported ? "On iPhone or iPad, open Goldsignal from your Home Screen to enable notifications." :
+        status?.enabled ? "This device is subscribed to entry and trade updates." : "Enable notifications on this device to receive entry and trade updates."}</p>
+    {status?.enabled && <div className="push-actions">
+      <button disabled={busy} onClick={sendTest}>Send test notification</button>
+      <button disabled={busy} onClick={() => void action(async () => {})}>Check delivery</button>
+    </div>}
+    {status?.enabled && status.test && <p className="muted small" role="status">
+      {status.test === "sent" ? "Push service accepted the test. Check this device for the notification." :
+        status.test === "queued" ? "Test queued. Check delivery in a few seconds." : "Test delivery failed or expired. Check notification settings and try again."}
+    </p>}
     {message && <p role="status">{message}</p>}
     {data.alerts.length ? <ul className="rows">
       {data.alerts.slice(0, 6).map(alert => <li key={alert.id}><div><a href={alert.url}>{alert.title}</a>
@@ -79,7 +131,6 @@ function App({ role, signOut, expired, settings }: {
   const [openedEntry, setOpenedEntry] = useState<{ signal: string; check: EntryCheck } | null>(null);
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
-  const [reload, setReload] = useState(0);
   const [selected, setSelected] = useState(currentSignal);
   useEffect(() => {
     if (!selected || new URLSearchParams(location.search).get("alert") !== "1") return;
@@ -127,8 +178,7 @@ function App({ role, signOut, expired, settings }: {
     }
     void poll();
     return () => { abort.abort(); clearTimeout(timer); };
-  }, [selected, reload, cursor, expired, frame]);
-  function refresh() { setReload(value => value + 1); }
+  }, [selected, cursor, expired, frame]);
   function select(event: React.MouseEvent<HTMLAnchorElement>, id: string | null) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -140,6 +190,9 @@ function App({ role, signOut, expired, settings }: {
   const entry = data?.entry_check;
   const session = data?.session;
   const pattern = data?.candidate?.evidence.pattern;
+  const showNotificationSetup = !!data?.push_key && "Notification" in window &&
+    (matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone) &&
+    Notification.permission === "default";
   return <>
     <header className="site-header"><div className="header-inner">
       <a className="wordmark" href={page} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
@@ -148,6 +201,7 @@ function App({ role, signOut, expired, settings }: {
     <main>
       {role !== "demo" && <div className="session-actions">
         <InstallButton />
+        {showNotificationSetup && <a href="#alerts">Set up notifications</a>}
         {role === "admin" && <a href={settings ? "#admin-settings" : "/admin"}>Admin settings</a>}
         <button type="button" onClick={() => void signOut()}>Sign out</button>
       </div>}
@@ -229,7 +283,7 @@ function App({ role, signOut, expired, settings }: {
               })}
             </details>
           </section>
-          {data && <Alerts data={data} reload={refresh} />}
+          {data && <Alerts data={data} />}
         </div>
         <section className="panel below" id="news" aria-labelledby="news-title">
           <div className="panel-heading"><h2 id="news-title">USD calendar</h2><span className="muted small">{data?.mode === "demo" ? "Mock feed" : "Official sources"}</span></div>
