@@ -91,7 +91,7 @@ def gemini_review(settings, candidate, snapshot, calendar):
                                         "responseSchema": {"type": "OBJECT", "required": ["decision", "reason"],
                                             "properties": {"decision": {"type": "STRING", "enum": ["CONFIRM", "WAIT", "REJECT"]},
                                                            "reason": {"type": "STRING"}}},
-                                        "thinkingConfig": {"thinkingBudget": 0}}},
+                                        "thinkingConfig": {"thinkingLevel": "minimal"}}},
         )
         response.raise_for_status()
         result = json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])
@@ -124,7 +124,7 @@ def new_candidate(snapshot):
                 result_per_lot=0 if snapshot["spec"] else None, costs=snapshot["spec"])
 
 
-def track(store, kind, snapshot, calendar):
+def track(store, kind, snapshot, calendar, stopped=False):
     now, ticks = snapshot["now"], snapshot["ticks"]
     for signal in store.all(kind):
         if signal["status"] not in ("PENDING", "FILLED"):
@@ -136,7 +136,7 @@ def track(store, kind, snapshot, calendar):
             if ts < signal["created"] or (quote and ts < signal.get("last_tick", 0)):
                 continue
             pause = None if kind == "shadow" else news.restriction(calendar, ts, DEMO)
-            open_now = bool(quote and gate(signal, quote, ts, pause)[0] == "CONFIRM")
+            open_now = bool(not stopped and quote and gate(signal, quote, ts, pause)[0] == "CONFIRM")
             events = advance(signal, quote, ts, open_now, signal["costs"])
             if quote:
                 signal["last_tick"] = ts
@@ -175,25 +175,30 @@ def process(source, step, cursor, calendar, revision):
         with transaction() as store:
             gemini = store.get("ai", "gemini", {})
             configured = gemini.get("enabled")
+            stopped = news.manual_pause(store, utc_now())
             published = store.get("signal", candidate["id"]) if configured or REVIEW != "rules" else None
             prior = store.get("candidate", candidate["id"]) if configured or REVIEW != "rules" else None
         if configured or REVIEW != "rules":
             review_provider = "gemini" if configured else REVIEW
             model = prior.get("model") if prior and prior.get("review_provider", REVIEW) == review_provider else None
             pause = news.restriction(calendar, now, DEMO) if configured else None
-            if not published and not model and gate(candidate, snapshot["quote"], now, pause)[0] == "CONFIRM":
+            if not stopped and not published and not model and gate(candidate, snapshot["quote"], now, pause)[0] == "CONFIRM":
                 model = (gemini_review(gemini, candidate, snapshot, calendar) if configured
                          else model_review(candidate, snapshot, calendar))
                 if not DEMO:
                     snapshot = source.read(cursor, step, utc_now())
     review_gate = model or (("WAIT", "Waiting for Gemini review") if configured else None)
     with transaction() as store:
-        track(store, "signal", snapshot, calendar)
-        track(store, "shadow", snapshot, calendar)
+        stopped = news.manual_pause(store, utc_now())
+        track(store, "signal", snapshot, calendar, stopped)
+        track(store, "shadow", snapshot, calendar, stopped)
         now = snapshot["now"] if DEMO else utc_now()
         quote = snapshot["quote"]
+        if stopped:
+            scan["reason"] = "New entries paused by admin."
         if candidate and not store.get("signal", candidate["id"]):
-            decision, reason = evaluate(candidate, quote, now, calendar, review_gate)
+            decision, reason = (("WAIT", scan["reason"]) if stopped else
+                                evaluate(candidate, quote, now, calendar, review_gate))
             baseline, baseline_reason = gate(candidate, quote, now)
             key = candidate["id"]
             evidence = store.get("candidate", key, {})
@@ -203,7 +208,7 @@ def process(source, step, cursor, calendar, revision):
                                         "calendar_reason": news.restriction(calendar, now, DEMO),
                                         "baseline": baseline, "baseline_reason": baseline_reason, "model": model,
                                         "review_provider": review_provider})
-            if baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
+            if not stopped and baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(candidate, exits=[], created=now))
             if decision == "CONFIRM":
                 now = snapshot["now"] if DEMO else utc_now()

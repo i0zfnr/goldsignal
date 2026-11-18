@@ -26,6 +26,10 @@ class CalendarSource(Protocol):
     def __call__(self, now: float) -> list[dict]: ...
 
 
+def manual_pause(store, now):
+    return store.get("control", "entry_pause", {}).get("until", 0) > now
+
+
 def event(source, title, ts, url, **values):
     return dict(source=source, title=title, time=int(ts), url=url, actual=values.get("actual"),
                 forecast=values.get("forecast"), previous=values.get("previous"))
@@ -58,12 +62,18 @@ def bea_events(now):
         page = BeautifulSoup(download(url), "html.parser")
         for row in page.select("tr"):
             title, day, time = row.select_one(".release-title"), row.select_one(".release-date"), row.select_one(".scheduled-date small")
-            if not all((title, day, time)) or not title.get_text(strip=True).lower().startswith("personal income and outlays"):
+            if not all((title, day, time)):
+                continue
+            headline = title.get_text(strip=True)
+            category = next((name for prefix, name in (("personal income and outlays", "PCE"),
+                                                       ("gross domestic product", "GDP"))
+                             if headline.lower().startswith(prefix)), None)
+            if not category:
                 continue
             stamp = datetime.strptime(f"{day.get_text(strip=True)} {schedule_year} {time.get_text(strip=True)}",
                                       "%B %d %Y %I:%M %p").replace(tzinfo=NY)
             link = row.select_one("a[href]")
-            rows.append(event("BEA", f"PCE · {title.get_text(strip=True)}", stamp.timestamp(),
+            rows.append(event("BEA", f"{category} · {headline}", stamp.timestamp(),
                               urljoin(url, link["href"]) if link else url))
     return rows
 

@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
 import { Access, ApiError, api } from "./access";
 import { InstallButton } from "./install";
-import type { Dashboard, Frame } from "./types";
+import type { Dashboard, EntryCheck, Frame } from "./types";
 import "@fontsource/geist/latin-400.css";
 import "@fontsource/geist/latin-600.css";
 import "@fontsource/geist/latin-700.css";
@@ -72,10 +72,19 @@ function App({ role, signOut, expired, settings }: {
 }) {
   const page = settings ? "/admin" : "/";
   const [frame, setFrame] = useState<Frame>("M15");
+  const [openedEntry, setOpenedEntry] = useState<{ signal: string; check: EntryCheck } | null>(null);
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const [selected, setSelected] = useState(currentSignal);
+  useEffect(() => {
+    if (!selected || new URLSearchParams(location.search).get("alert") !== "1") return;
+    let current = true;
+    void api<EntryCheck>(`/api/entry-open?signal=${encodeURIComponent(selected)}`, { method: "POST" })
+      .then(check => { if (current) setOpenedEntry({ signal: selected, check }); })
+      .catch(() => {});
+    return () => { current = false; };
+  }, [selected]);
   const cursor = useState(() => ({ frame: "M15" as Frame, revision: undefined as number | undefined }))[0];
   useEffect(() => {
     function change() { setSelected(currentSignal()); }
@@ -117,6 +126,7 @@ function App({ role, signOut, expired, settings }: {
     document.getElementById("signal")?.scrollIntoView();
   }
   const signal = data?.active;
+  const entry = data?.entry_check;
   const session = data?.session;
   const pattern = data?.candidate?.evidence.pattern;
   return <>
@@ -176,6 +186,13 @@ function App({ role, signOut, expired, settings }: {
               <p className="reason"><strong>{signal.evidence.grade}</strong> · {signal.evidence.reason}</p>
               {signal.review?.provider === "gemini" && <p className="small"><strong>Gemini</strong> · {signal.review.reason}</p>}
               <p className="small muted">Published {displayTime(signal.created)} · Entry expiry {displayTime(signal.expiry)} MYT</p>
+              {entry && <p className={entry.valid ? "good small" : "warn small"}>
+                {entry.side} {price(entry.price)} · {entry.valid ? "Entry valid" : entry.reason}
+              </p>}
+              {entry?.ratios && <p className="small muted">Reward/risk before costs · {entry.ratios.map((ratio, i) => `TP${i + 1} ${ratio}R`).join(" · ")}</p>}
+              {openedEntry?.signal === signal.id && <p className="small muted">
+                At alert open · {openedEntry.check.side} {price(openedEntry.check.price)} · {openedEntry.check.valid ? "Valid" : openedEntry.check.reason}
+              </p>}
             </> : <p className="muted">{selected ? "Signal unavailable." : "Waiting for a confirmed setup."}</p>}
             {data?.scan && <p className="gate">{data.scan.reason}{data.scan.closed_at && <span className="muted"> · M15 close {displayTime(data.scan.closed_at)} MYT</span>}</p>}
             {data?.candidate && <p className="gate">Last candidate · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}

@@ -115,8 +115,8 @@ def executable(signal, quote, exit_side=False):
     return quote["ask" if (signal["direction"] == "BUY") != exit_side else "bid"]
 
 
-def gate(signal, quote, now, news_reason=None):
-    if now >= signal["expiry"] or not session(now)["open"]:
+def gate(signal, quote, now, news_reason=None, *, window=None):
+    if now >= signal["expiry"] or not (window if window is not None else session(now))["open"]:
         return "REJECT", "Entry session or candidate expired"
     if not quote or not quote["available"] or not -2 <= now - quote["time"] <= STALE_SECONDS:
         return "WAIT", "Broker quote unavailable or stale"
@@ -166,7 +166,7 @@ def account_fit(signal, profile, spec, now, realized=0, profile_now=None):
     if d(realized) <= -(equity * d(profile["daily_loss_pct"]) / 100):
         return skip("Tracked daily loss limit reached", **values)
     if minimum_loss > budget:
-        return skip("Minimum lot exceeds risk budget", **values)
+        return skip("Minimum lot exceeds your risk limit", **values)
     if minimum * margin_per_lot > margin_cap:
         return skip("Free margin is below minimum-lot estimate", **values)
     cap = min(budget / loss_per_lot, margin_cap / margin_per_lot, d(spec["maximum"]))

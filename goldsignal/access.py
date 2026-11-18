@@ -13,11 +13,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, SecretStr
 
 from .config import MODE, utc_now
+from .news import manual_pause
 from .store import transaction
 
 router = APIRouter()
 COOKIE = "goldsignal_session"
-MODEL = "gemini-2.5-flash-lite"
+MODEL = "gemini-3.5-flash-lite"
 attempts = {"admin": deque(), "viewer": deque()}
 attempt_lock = Lock()
 
@@ -141,14 +142,27 @@ class Gemini(BaseModel):
     enabled: bool
 
 
+class Pause(BaseModel):
+    paused: bool
+
+
 @router.get("/api/admin/settings")
 def settings(request: Request):
     admin(request)
     with transaction() as store:
         config = store.get("ai", "gemini", {})
         grants = store.all("access_key")
+        paused = manual_pause(store, utc_now())
     return {"configured": bool(config.get("ciphertext")), "enabled": bool(config.get("enabled")),
-            "model": MODEL, "keys": sorted(grants, key=lambda item: item["created"], reverse=True)}
+            "model": MODEL, "paused": paused, "keys": sorted(grants, key=lambda item: item["created"], reverse=True)}
+
+
+@router.put("/api/admin/pause")
+def pause_entries(body: Pause, request: Request):
+    admin(request)
+    with transaction() as store:
+        store.put("control", "entry_pause", {"until": utc_now() + 3600 if body.paused else 0})
+    return {"paused": body.paused}
 
 
 @router.post("/api/admin/keys", status_code=201)

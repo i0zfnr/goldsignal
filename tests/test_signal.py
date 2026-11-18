@@ -11,6 +11,7 @@ from goldsignal.access import password_hash
 from goldsignal.lifecycle import advance
 from goldsignal.market import REPLAY_START, Replay, demo_profile, demo_spec
 from goldsignal.strategy import account_fit, compare_pattern, gate, levels, setup
+from goldsignal.replay_report import allocate, candidates, replay
 
 
 def test_access_and_gemini_storage(db, monkeypatch):
@@ -28,6 +29,11 @@ def test_access_and_gemini_storage(db, monkeypatch):
         assert viewer.post("/api/auth/viewer", json={"credential": secret}).status_code == 200
         assert viewer.get("/api/dashboard?frame=M1").json()["frame"] == "M1"
         assert viewer.put("/api/admin/gemini", json={"enabled": True}).status_code == 403
+        assert viewer.put("/api/admin/pause", json={"paused": True}).status_code == 403
+        assert operator.put("/api/admin/pause", json={"paused": True}).json()["paused"]
+        tick(0)
+        assert operator.get("/api/dashboard").json()["candidate"]["reason"] == "New entries paused by admin."
+        assert not operator.put("/api/admin/pause", json={"paused": False}).json()["paused"]
         provider_key = "AQ.fixture-provider-key"
         assert operator.put("/api/admin/gemini", json={"api_key": provider_key, "enabled": True}).status_code == 200
         settings = operator.get("/api/admin/settings")
@@ -74,7 +80,7 @@ def test_gemini_caps_and_invalid_review_hold(db, monkeypatch):
         calls.append(kwargs["json"])
         assert "generativelanguage.googleapis.com" in url
         assert kwargs["json"]["generationConfig"]["maxOutputTokens"] == 96
-        assert kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 0
+        assert kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "minimal"
         assert len(kwargs["json"]["contents"][0]["parts"][0]["text"]) < 650
         return Reply()
 
@@ -152,7 +158,8 @@ def test_broker_overlap_and_weekend():
     assert config.session(monday + 3600, "11:00-12:00")["open"]
 
 
-def test_regional_sessions_and_broker_rollover():
+def test_regional_sessions_and_broker_rollover(monkeypatch):
+    monkeypatch.setattr(config, "ENTRY_SESSIONS", {"sydney", "tokyo", "london", "new_york"})
     hours = "00:00-17:00,18:00-24:00"
     first = config.session(stamp("2026-11-22T22:59:59+00:00"), hours)
     assert not first["open"] and first["next"] == ["Sydney"]
@@ -274,6 +281,10 @@ def test_end_to_end_and_duplicate_events(db, monkeypatch):
         assert state["status"] == "DEMO" and len(state["candles"]) == 250
         assert state["candidate"]["decision"] == "CONFIRM" and state["active"]["status"] == "PENDING"
         assert state["scan"]["closed_at"] == REPLAY_START
+        opened = client.post("/api/entry-open", params={"signal": state["active"]["id"]}).json()
+        assert opened["valid"] and opened["side"] == "Bid" and len(opened["ratios"]) == 3
+        with store.transaction() as data:
+            assert data.all("entry_open")[0]["price"] == opened["price"]
         assert "fit" not in state and "profile" not in state
         assert [item["kind"] for item in state["alerts"]] == ["ENTRY"]
         for step in range(1, 9):
@@ -289,6 +300,23 @@ def test_end_to_end_and_duplicate_events(db, monkeypatch):
         assert len(latest["alerts"]) == 5
         assert len({item["id"] for item in latest["alerts"]}) == 5
         assert client.put("/api/profile", json={}).status_code in (404, 405)
+
+
+def test_baseline_replay_delay_and_broker_valid_exits():
+    source = Replay()
+    snapshot = source.read(None, 0, 0)
+    _, found = candidates(snapshot["bars"], REPLAY_START, REPLAY_START + 60)
+    assert len(found) == 1
+    ticks = [source.read(None, step, 0)["quote"] for step in range(9)]
+    profile = demo_profile(REPLAY_START)
+    costs = demo_spec(REPLAY_START)
+    trade = replay(found[0], ticks, 0, [], profile, costs, REPLAY_START + 2000)
+    assert trade["outcome"] == "filled" and trade["net_account"] > 0
+    assert trade["sizing"]["exit_lots"] == [0.03, 0.03, 0.02]
+    assert allocate(0.05, 0.01, 0.01) == [0.02, 0.02, 0.01]
+    missed = replay(found[0], ticks, 540, [], {**profile, "equity": 100}, costs, REPLAY_START + 2000)
+    assert missed["outcome"] == "missed_after_delay"
+    assert missed["sizing"]["reason"] == "Minimum lot exceeds your risk limit"
 
 
 def test_shared_alerts_require_only_push_opt_in(db):

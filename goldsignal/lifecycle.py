@@ -5,6 +5,7 @@ from .strategy import executable
 
 
 def advance(signal, quote, now, can_fill, costs):
+    fractions = signal.get("exit_fractions", (1 / 3,) * 3)
     status = signal["status"]
     if status == "PENDING":
         if now >= signal["expiry"]:
@@ -27,13 +28,13 @@ def advance(signal, quote, now, can_fill, costs):
         while signal["hits"] < 3 and sign * (price - signal["targets"][signal["hits"]]) >= 0:
             index = signal["hits"]
             signal["hits"] += 1
-            signal["exits"].append(dict(time=now, price=price, kind=f"TP{index + 1}", fraction=1 / 3))
+            signal["exits"].append(dict(time=now, price=price, kind=f"TP{index + 1}", fraction=fractions[index]))
             if index < 2:
                 signal["stop"] = signal["reference"] if index == 0 else signal["targets"][0]
             events.append((f"TP{index + 1}", signal["stop"]))
     if events and events[0][0] in ("STOPPED", "TIMED_OUT"):
         signal["status"] = events[0][0]
-        signal["exits"].append(dict(time=now, price=price, kind=signal["status"], fraction=(3 - signal["hits"]) / 3))
+        signal["exits"].append(dict(time=now, price=price, kind=signal["status"], fraction=sum(fractions[signal["hits"]:])))
     if signal["hits"] == 3:
         signal["status"] = "COMPLETED"
     if costs:

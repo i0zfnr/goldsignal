@@ -1,6 +1,8 @@
 import type { CandlestickData, UTCTimestamp } from "lightweight-charts";
 
 export type Candle = CandlestickData<UTCTimestamp>;
+export type EntryCheck = { valid: boolean; reason: string; price: number | null; side: "Bid" | "Ask";
+  ratios: number[] | null; checked_at: number };
 export type Frame = "M1" | "M5" | "M15" | "M30" | "H1" | "H4";
 type Pattern = { rsi8: number | null; history: number; matches: number; next4_bps: number | null };
 type Evidence = { reason: string; grade: string; pattern?: Pattern };
@@ -21,6 +23,7 @@ export type Dashboard = {
   frame: Frame;
   events: { id: string; kind: string; time: number; stop: number; note: string | null }[];
   candidate: { decision: string; reason: string; evidence: Evidence } | null;
+  entry_check?: EntryCheck | null;
   scan?: { reason: string; closed_at?: number } | null;
   calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };

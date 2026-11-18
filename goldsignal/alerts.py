@@ -5,7 +5,7 @@ import os
 from pywebpush import WebPushException, webpush
 
 from .config import MODE, utc_now
-from .news import restriction
+from .news import manual_pause, restriction
 from .store import transaction
 from .strategy import gate
 
@@ -26,7 +26,7 @@ def add_alert(store, profile_id, signal, kind, ts):
     settings = store.get("push", profile_id, {})
     store.put("alert", key, dict(id=key, profile=profile_id, signal=signal["id"], kind=kind, time=ts,
                                 valid_until=signal["expiry"] if entry else ts + 3600,
-                                title=title, body=body, url=f"/?signal={signal['id']}#signal",
+                                title=title, body=body, url=f"/?signal={signal['id']}&alert=1#signal",
                                 delivery="queued" if settings else "preview", attempts=0))
 
 
@@ -46,7 +46,7 @@ def send_pending(now):
             if alert["kind"] == "ENTRY":
                 pause = restriction(state.get("calendar", {}), clock, MODE == "demo")
                 quote = state.get("quote") if utc_now() - state.get("heartbeat", 0) <= 30 else None
-                eligible = bool(signal and signal["status"] == "PENDING" and
+                eligible = bool(not manual_pause(store, utc_now()) and signal and signal["status"] == "PENDING" and
                                 gate(signal, quote, clock, pause)[0] == "CONFIRM")
         if not subscription or clock >= alert["valid_until"] or not eligible:
             alert["delivery"] = "expired"

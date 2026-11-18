@@ -6,6 +6,7 @@ type Settings = {
   configured: boolean;
   enabled: boolean;
   model: string;
+  paused?: boolean;
   keys: Array<{ id: string; label: string; revoked: boolean }>;
 };
 
@@ -26,9 +27,10 @@ function send<T>(path: string, method: string, value: unknown) {
   return api<T>(path, { method, body: JSON.stringify(value), headers: { "Content-Type": "application/json" } });
 }
 
-function AccessHeader() {
+function AccessHeader({ adminShortcut = false }: { adminShortcut?: boolean }) {
   return <header className="site-header"><div className="header-inner">
     <a className="wordmark" href="/"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+    {adminShortcut && <a className="admin-shortcut" href="/admin" aria-label="Admin sign-in"><span>Admin sign-in</span></a>}
     <InstallButton />
   </div></header>;
 }
@@ -50,7 +52,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
       setBusy(false);
     }
   }
-  return <><AccessHeader />
+  return <><AccessHeader adminShortcut={!isAdmin} />
     <main className="access-page">
       <section className="panel access-panel" aria-labelledby="login-title">
         <h1 id="login-title">{isAdmin ? "Admin sign-in" : "Sign in to Goldsignal"}</h1>
@@ -211,7 +213,17 @@ function AdminSettings() {
             <button className="primary" disabled={busy}>Save Gemini settings</button>
           </form>
         </section>
-      </div><AdminChat configured={settings.configured} /></> : !error && <p role="status">Loading settings…</p>}
+      </div>
+      <section className="panel access-panel admin-chat">
+        <div className="panel-heading"><h3>Breaking-news pause</h3>
+          <button type="button" disabled={busy} onClick={() => void action(async () => {
+            await send("/api/admin/pause", "PUT", { paused: !settings.paused });
+            await refresh();
+          })}>{settings.paused ? "Resume entries" : "Pause entries for 1 hour"}</button>
+        </div>
+        <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
+      </section>
+      <AdminChat configured={settings.configured} /></> : !error && <p role="status">Loading settings…</p>}
     </section>;
 }
 

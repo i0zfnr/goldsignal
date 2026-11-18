@@ -35,6 +35,8 @@ def ask(key, turns):
         )
         if response.status_code in (400, 401, 403):
             return {"error": "Gemini rejected the request. Check your AI Studio key and project access."}
+        if response.status_code == 404:
+            return {"error": "The configured Gemini model is unavailable for this Google project."}
         if response.status_code == 429:
             return {"error": "Google Gemini quota exceeded. Check AI Studio or try again later."}
         response.raise_for_status()

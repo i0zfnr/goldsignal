@@ -62,11 +62,11 @@ def broker_windows(day, hours):
     return sorted(windows)
 
 
-def session(ts, broker_hours=None):
+def session(ts, broker_hours=None, selected=None):
     hours = broker_hours if broker_hours is not None else ("" if MODE == "demo" else BROKER_HOURS)
     market = []
     for key, name, zone, opening, closing in MARKET_SESSIONS:
-        if key not in ENTRY_SESSIONS:
+        if key not in (ENTRY_SESSIONS if selected is None else selected):
             continue
         today = datetime.fromtimestamp(ts, zone).date()
         for offset in range(-1, 8):

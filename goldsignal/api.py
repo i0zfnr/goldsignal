@@ -12,10 +12,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
 from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
-from .news import restriction
+from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import identity, router
 from .chat import router as chat_router
+from .strategy import executable, gate
 
 
 @asynccontextmanager
@@ -65,6 +66,24 @@ def metrics(signals):
                 round(sum(s["result_per_lot"] for s in fills), 2))
 
 
+def entry_snapshot(store, signal, state, wall):
+    clock = state.get("now", wall) if MODE == "demo" else wall
+    quote = state.get("quote") if not state.get("error") and wall - state.get("heartbeat", 0) <= 30 else None
+    price = executable(signal, quote) if quote else None
+    if signal["status"] not in ("PENDING", "FILLED") or signal.get("hits", 0):
+        valid, reason = False, "This signal is already past its entry phase."
+    elif manual_pause(store, wall):
+        valid, reason = False, "New entries paused by admin."
+    else:
+        decision, reason = gate(signal, quote, clock, restriction(state.get("calendar", {}), clock, MODE == "demo"))
+        valid = decision == "CONFIRM"
+    sign = 1 if signal["direction"] == "BUY" else -1
+    risk = sign * (price - signal["initial_stop"]) if price is not None else 0
+    ratios = [round(sign * (target - price) / risk, 2) for target in signal["targets"]] if valid and risk > 0 else None
+    return {"valid": valid, "reason": reason, "quote": quote, "price": price, "ratios": ratios,
+            "side": "Ask" if sign == 1 else "Bid", "checked_at": wall}
+
+
 @app.get("/api/dashboard")
 def dashboard(request: Request, response: Response, after: int | None = None, signal: str | None = None,
               frame: Literal["M1", "M5", "M15", "M30", "H1", "H4"] = "M15"):
@@ -96,6 +115,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after, frame), frame=frame,
             scan=state.get("scan") if status != "STALE" else None,
             session=window, active=public(selected) if selected else None,
+            entry_check=entry_snapshot(store, selected, state, wall) if selected else None,
             history=[public(item) for item in history[:15]],
             events=sorted((e for e in store.all("event") if selected and e["signal"] == selected["id"]), key=lambda e: e["time"]),
             candidate=public(candidate) if candidate else None,
@@ -107,6 +127,18 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             push_key=os.getenv("VAPID_PUBLIC_KEY"), push_enabled=bool(store.get("push", profile_id)),
             metrics={"with_news": metrics(history), "without_news": metrics(store.all("shadow"))},
         )
+
+
+@app.post("/api/entry-open")
+def entry_open(signal: str, request: Request, response: Response):
+    viewer = get_id(request, response)
+    with transaction() as store:
+        item = store.get("signal", signal)
+        if not item:
+            raise HTTPException(404, "Signal not found.")
+        result = entry_snapshot(store, item, store.get("state", "market", {}), utc_now())
+        store.put("entry_open", secrets.token_hex(16), {"viewer": viewer, "signal": signal, **result})
+    return result
 
 
 class PushKeys(BaseModel):
