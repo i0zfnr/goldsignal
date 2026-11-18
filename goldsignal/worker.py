@@ -12,7 +12,7 @@ import httpx
 from filelock import FileLock
 
 from . import news
-from .access import MODEL, encryption
+from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, send_pending
 from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
 from .lifecycle import advance
@@ -89,11 +89,12 @@ def gemini_review(settings, candidate, snapshot, calendar):
                 'Next4 is historical return in side direction (bps), not a forecast. '
                 'CONFIRM coherent evidence, WAIT uncertainty, REJECT contradiction. Reason max 12 words. '
                 + json.dumps(evidence, separators=(",", ":"))
-            )}]}], "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": 96,
+            )}]}], "generationConfig": {"responseMimeType": "application/json",
+                                        "maxOutputTokens": 512 if MODEL == PRO_MODEL else 96,
                                         "responseSchema": {"type": "OBJECT", "required": ["decision", "reason"],
                                             "properties": {"decision": {"type": "STRING", "enum": ["CONFIRM", "WAIT", "REJECT"]},
                                                            "reason": {"type": "STRING"}}},
-                                        "thinkingConfig": {"thinkingLevel": "minimal"}}},
+                                        "thinkingConfig": {"thinkingLevel": "low" if MODEL == PRO_MODEL else "minimal"}}},
         )
         response.raise_for_status()
         result = json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])

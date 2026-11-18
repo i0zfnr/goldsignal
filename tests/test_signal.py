@@ -64,10 +64,15 @@ def test_pattern_rsi8_uses_actual_sample():
     assert pattern["matches"] == 5 and pattern["next4_bps"] > 0
 
 
-def test_gemini_caps_and_invalid_review_hold(db, monkeypatch):
+@pytest.mark.parametrize(("model", "token_cap", "thinking"), [
+    ("gemini-3.5-flash-lite", 96, "minimal"),
+    ("gemini-3.1-pro-preview", 512, "low"),
+])
+def test_gemini_caps_and_invalid_review_hold(db, monkeypatch, model, token_cap, thinking):
     key = Fernet.generate_key()
     cipher = Fernet(key)
     monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", key.decode())
+    monkeypatch.setattr(worker, "MODEL", model)
     calls = []
 
     class Reply:
@@ -79,9 +84,9 @@ def test_gemini_caps_and_invalid_review_hold(db, monkeypatch):
 
     def post(url, **kwargs):
         calls.append(kwargs["json"])
-        assert "generativelanguage.googleapis.com" in url
-        assert kwargs["json"]["generationConfig"]["maxOutputTokens"] == 96
-        assert kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "minimal"
+        assert url.endswith(f"/{model}:generateContent")
+        assert kwargs["json"]["generationConfig"]["maxOutputTokens"] == token_cap
+        assert kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == thinking
         assert len(kwargs["json"]["contents"][0]["parts"][0]["text"]) < 650
         return Reply()
 

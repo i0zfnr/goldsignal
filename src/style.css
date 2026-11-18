@@ -21,6 +21,8 @@ body { margin: 0; }
 .admin-grid h3 { margin: 0; font-size: 1rem; }
 .admin-chat { margin-top: 16px; }
 .admin-chat h3 { margin: 0 0 8px; font-size: 1rem; }
+.model-display { margin-block: 8px 4px; }
+.model-id { color: var(--gold); overflow-wrap: anywhere; }
 .admin-chat textarea { width: 100%; resize: vertical; padding: 9px; font: inherit; color: inherit; background: #121512; border: 1px solid #626e5e; border-radius: 4px; }
 .chat-turns { display: grid; gap: 12px; }
 .chat-turns article { padding: 10px; border-left: 2px solid var(--line); }

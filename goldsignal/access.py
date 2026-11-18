@@ -18,7 +18,10 @@ from .store import transaction
 
 router = APIRouter()
 COOKIE = "goldsignal_session"
-MODEL = "gemini-3.5-flash-lite"
+PRO_MODEL = "gemini-3.1-pro-preview"
+MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
+if MODEL not in ("gemini-3.5-flash-lite", PRO_MODEL):
+    raise ValueError("GEMINI_MODEL must be gemini-3.5-flash-lite or gemini-3.1-pro-preview")
 attempts = {"admin": deque(), "viewer": deque()}
 attempt_lock = Lock()
 

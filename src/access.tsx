@@ -72,7 +72,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
 
 type ChatTurn = { role: "user" | "model"; text: string };
 
-function AdminChat({ configured }: { configured: boolean }) {
+function AdminChat({ configured, model }: { configured: boolean; model: string }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -117,6 +117,7 @@ function AdminChat({ configured }: { configured: boolean }) {
   return <section className="panel access-panel admin-chat" aria-labelledby="gemini-chat-title">
     <h3 id="gemini-chat-title">Gemini chat</h3>
     {configured ? <>
+      <p className="small muted">Chat model <code className="model-id">{model}</code></p>
       <div className="chat-turns" role="log" aria-label="Conversation">
         {turns.map((turn, index) => <article key={index}>
           <strong>{turn.role === "user" ? "You" : "Gemini"}</strong>
@@ -203,7 +204,11 @@ function AdminSettings() {
         </section>
         <section className="panel access-panel">
           <div className="panel-heading"><h3>Gemini review</h3><span className={settings.enabled ? "good" : "muted"}>{settings.enabled ? "Enabled" : "Disabled"}</span></div>
-          <p className="muted">Python sends eligible setups to {settings.model} for one shared review. Usage follows your Google AI Studio project limits.</p>
+          <dl className="model-display">
+            <dt>Configured Gemini model</dt>
+            <dd><code className="model-id">{settings.model}</code></dd>
+          </dl>
+          <p className="muted small">{settings.enabled ? "Used to review eligible signal setups." : "Gemini signal review is disabled."}</p>
           <form className="access-form" key={String(settings.enabled)} onSubmit={save}>
             <label>Google AI Studio API key
               <input name="api_key" type="password" autoComplete="off" maxLength={256}
@@ -223,7 +228,7 @@ function AdminSettings() {
         </div>
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
-      <AdminChat configured={settings.configured} /></> : !error && <p role="status">Loading settings…</p>}
+      <AdminChat configured={settings.configured} model={settings.model} /></> : !error && <p role="status">Loading settings…</p>}
     </section>;
 }
 
