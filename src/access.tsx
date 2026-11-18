@@ -67,7 +67,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
   </>;
 }
 
-function AdminDashboard({ signOut }: { signOut: () => Promise<void> }) {
+function AdminSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newKey, setNewKey] = useState("");
   const [message, setMessage] = useState("");
@@ -110,16 +110,13 @@ function AdminDashboard({ signOut }: { signOut: () => Promise<void> }) {
     });
   }
 
-  return <><AccessHeader><nav aria-label="Admin navigation"><a href="/">Chart</a>
-    <button type="button" disabled={busy} onClick={() => void action(signOut)}>Sign out</button>
-  </nav></AccessHeader>
-    <main className="admin-page">
-      <h1>Admin dashboard</h1>
+  return <section className="admin-page" id="admin-settings" aria-labelledby="admin-settings-title">
+      <h2 id="admin-settings-title">Admin settings</h2>
       {error && <p className="warn" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
       {settings ? <div className="admin-grid">
         <section className="panel access-panel">
-          <div className="panel-heading"><h2>Viewer access</h2><span className="muted">{settings.keys.filter(key => !key.revoked).length} active</span></div>
+          <div className="panel-heading"><h3>Viewer access</h3><span className="muted">{settings.keys.filter(key => !key.revoked).length} active</span></div>
           <form className="access-form" onSubmit={create}>
             <label>Key label<input name="label" placeholder="e.g. Viewer name" required maxLength={80} /></label>
             <button className="primary" disabled={busy}>Create access key</button>
@@ -140,7 +137,7 @@ function AdminDashboard({ signOut }: { signOut: () => Promise<void> }) {
           </li>)}</ul> : <p className="muted">No access keys issued.</p>}
         </section>
         <section className="panel access-panel">
-          <div className="panel-heading"><h2>Gemini review</h2><span className={settings.enabled ? "good" : "muted"}>{settings.enabled ? "Enabled" : "Disabled"}</span></div>
+          <div className="panel-heading"><h3>Gemini review</h3><span className={settings.enabled ? "good" : "muted"}>{settings.enabled ? "Enabled" : "Disabled"}</span></div>
           <p className="muted">Python sends eligible setups to {settings.model} for one shared review. Usage follows your Google AI Studio project limits.</p>
           <form className="access-form" key={String(settings.enabled)} onSubmit={save}>
             <label>Google AI Studio API key
@@ -152,11 +149,12 @@ function AdminDashboard({ signOut }: { signOut: () => Promise<void> }) {
           </form>
         </section>
       </div> : !error && <p role="status">Loading settings…</p>}
-    </main>
-  </>;
+    </section>;
 }
 
-export function Access({ dashboard }: { dashboard: (role: Role, signOut: () => Promise<void>, expired: () => void) => ReactNode }) {
+export function Access({ dashboard }: { dashboard: (
+  role: Role, signOut: () => Promise<void>, expired: () => void, settings?: ReactNode
+) => ReactNode }) {
   const [role, setRole] = useState<Role | undefined>(undefined);
   const [error, setError] = useState("");
   const isAdmin = location.pathname === "/admin";
@@ -180,7 +178,7 @@ export function Access({ dashboard }: { dashboard: (role: Role, signOut: () => P
     <p className="warn" role="alert">{error}</p><button onClick={load}>Retry</button>
   </main></>;
   if (role === undefined) return <><AccessHeader /><main className="access-page"><p role="status">Checking access…</p></main></>;
-  if (isAdmin) return role === "admin" ? <AdminDashboard signOut={signOut} /> : <LoginPage isAdmin complete={setRole} />;
+  if (isAdmin && role !== "admin") return <LoginPage key={role ?? "guest"} isAdmin complete={setRole} />;
   if (!role) return <LoginPage isAdmin={false} complete={setRole} />;
-  return dashboard(role, signOut, () => setRole(null));
+  return dashboard(role, signOut, () => setRole(null), isAdmin ? <AdminSettings /> : undefined);
 }

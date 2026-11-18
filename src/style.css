@@ -16,7 +16,9 @@
 body { margin: 0; }
 .access-page { width: min(100%, 520px); margin: 8vh auto 0; }
 .access-panel { padding: clamp(16px, 3vw, 28px); }
-.access-panel h1, .admin-page h1 { margin-bottom: 12px; }
+.access-panel h1, .admin-page > h2 { margin-bottom: 12px; }
+.admin-page > h2 { font-size: 1.45rem; }
+.admin-grid h3 { margin: 0; font-size: 1rem; }
 .access-form, .issued-key { display: grid; gap: 12px; margin-block: 16px; }
 .admin-page { padding-block: 28px; }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 16px; }

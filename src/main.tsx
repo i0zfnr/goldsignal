@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
 import { Access, ApiError, api } from "./access";
@@ -129,7 +129,10 @@ function Alerts({ data, reload }: { data: Dashboard; reload: () => void }) {
   </section>;
 }
 
-function App({ role, signOut, expired }: { role: string | null; signOut: () => Promise<void>; expired: () => void }) {
+function App({ role, signOut, expired, settings }: {
+  role: string | null; signOut: () => Promise<void>; expired: () => void; settings?: ReactNode;
+}) {
+  const page = settings ? "/admin" : "/";
   const [frame, setFrame] = useState<Frame>("M15");
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
@@ -180,12 +183,12 @@ function App({ role, signOut, expired }: { role: string | null; signOut: () => P
   const pattern = data?.candidate?.evidence.pattern;
   return <>
     <header className="site-header"><div className="header-inner">
-      <a className="wordmark" href="/" aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+      <a className="wordmark" href={page} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
       <nav aria-label="Dashboard sections"><a href="#signal">Signal</a><a href="#history">History</a><a href="#alerts">Alerts</a></nav>
     </div></header>
     <main>
       {role !== "demo" && <div className="session-actions">
-        {role === "admin" && <a href="/admin">Admin dashboard</a>}
+        {role === "admin" && <a href={settings ? "#admin-settings" : "/admin"}>Admin settings</a>}
         <button type="button" onClick={() => void signOut()}>Sign out</button>
       </div>}
       <div className="market-heading">
@@ -223,7 +226,7 @@ function App({ role, signOut, expired }: { role: string | null; signOut: () => P
             <div className="panel-heading"><h2 id="signal-title">{selected ? "Selected signal" : "Latest signal"}</h2>
               {signal && <span className={signal.direction === "SELL" ? "warn" : "good"}>{signal.direction} · {signal.status}</span>}
             </div>
-            {selected && <a className="small" href="/#signal" onClick={event => select(event, null)}>Back to latest signal</a>}
+            {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to latest signal</a>}
             {signal ? <>
               <div className="entry-value"><span>Entry zone</span><strong>{price(signal.entry[0])}–{price(signal.entry[1])}</strong></div>
               <dl className="levels"><div><dt>Current SL</dt><dd className="warn">{price(signal.stop)}</dd></div>
@@ -245,7 +248,7 @@ function App({ role, signOut, expired }: { role: string | null; signOut: () => P
         <section className="panel below" id="history" aria-labelledby="history-title">
           <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
           {data?.history.length ? <ul className="rows">{data.history.map(item =>
-            <li key={item.id}><div><a href={`/?signal=${item.id}#signal`} onClick={event => select(event, item.id)}>{item.direction} · {price(item.reference)}</a>
+            <li key={item.id}><div><a href={`${page}?signal=${item.id}#signal`} onClick={event => select(event, item.id)}>{item.direction} · {price(item.reference)}</a>
               <p className="muted small">{displayTime(item.created)} MYT</p></div><span>{item.status}</span></li>)}</ul> : <p className="muted">No signals saved yet.</p>}
           <details><summary>Lifecycle and comparison</summary>
             {data?.events.map(event => <p className="small" key={event.id}>{displayTime(event.time)} MYT · {event.kind} · SL {price(event.stop)}{event.note ? ` · ${event.note}` : ""}</p>)}
@@ -272,10 +275,11 @@ function App({ role, signOut, expired }: { role: string | null; signOut: () => P
         </section>
         {data && <Alerts data={data} reload={refresh} />}
       </div>
+      {settings}
     </main>
     <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a></footer>
   </>;
 }
 
 createRoot(document.getElementById("root")!).render(<Access
-  dashboard={(role, signOut, expired) => <App role={role} signOut={signOut} expired={expired} />} />);
+  dashboard={(role, signOut, expired, settings) => <App role={role} signOut={signOut} expired={expired} settings={settings} />} />);
