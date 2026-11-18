@@ -15,7 +15,7 @@ export type Signal = {
   evidence: Evidence;
   review?: { provider: string; reason: string };
 };
-type News = { title: string; time: number; source: string; url: string | null; first_seen?: number;
+type News = { title: string; time: number; source: string; url: string | null; first_seen?: number; impact?: "high" | "medium";
   actual?: string; forecast?: string; previous?: string };
 export type Dashboard = {
   symbol: string; mode: string; status: string; clock: number; heartbeat: number | null;

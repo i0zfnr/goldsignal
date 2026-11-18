@@ -159,7 +159,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         )
         history = sorted(store.all("signal"), key=lambda s: s["created"], reverse=True)
         active = next((s for s in history if s["status"] in ("PENDING", "FILLED")), None)
-        selected = store.get("signal", signal) if signal else active or next(iter(history), None)
+        selected = store.get("signal", signal) if signal else active
         candidate = max(store.all("candidate"), key=lambda row: row["evaluated"], default=None)
         calendar = state.get("calendar", {})
         window = session(now)
@@ -179,7 +179,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             candidate=public(candidate) if candidate else None,
             calendar={**calendar, "events": sorted(
                 (row for row in calendar.get("events", []) if row["time"] >= now),
-                key=lambda row: row["time"])[:6], "restriction": restriction(calendar, now, demo)},
+                key=lambda row: row["time"])[:16], "restriction": restriction(calendar, now, demo)},
             alerts=sorted((a for a in store.all("alert") if a["profile"] == "shared"),
                           key=lambda a: a["time"], reverse=True)[:20],
             push_key=os.getenv("VAPID_PUBLIC_KEY"), push_enabled=bool(store.get("push", profile_id)),

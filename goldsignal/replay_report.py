@@ -50,7 +50,8 @@ def allocate(lot, minimum, step):
 def replay(candidate, ticks, delay, events, profile, costs, history_end):
     def pause(ts):
         return next((row["title"] for row in events
-                     if row["time"] - NEWS_BEFORE <= ts <= row["time"] + NEWS_AFTER), None)
+                     if row.get("impact", "high") == "high"
+                     and row["time"] - NEWS_BEFORE <= ts <= row["time"] + NEWS_AFTER), None)
 
     open_time = candidate["close_time"]
     sizing = account_fit(candidate, {**profile, "updated": open_time}, {**costs, "time": open_time}, open_time)

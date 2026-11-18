@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ORIGIN = "http://127.0.0.1:8000"
 ROUTES = {("GET", "/api/dashboard"), ("GET", "/api/performance"),
+          ("GET", "/api/viewer-profile"), ("PUT", "/api/viewer-profile"),
           ("POST", "/api/push/status"), ("POST", "/api/push/test"),
           ("PUT", "/api/push"), ("DELETE", "/api/push"), ("GET", "/api/auth/session"),
           ("DELETE", "/api/auth/session"), ("POST", "/api/auth/admin"), ("POST", "/api/auth/viewer"),

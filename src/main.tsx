@@ -19,7 +19,64 @@ const displayTime = (ts: number) => myt.format(ts * 1000);
 const price = (value?: number | null) => value == null ? "–" : number.format(value);
 const currentSignal = () => new URLSearchParams(location.search).get("signal");
 const frames: Frame[] = ["M1", "M5", "M15", "M30", "H1", "H4"];
+const dashboardViews = [
+  ["signal", "Live dashboard"],
+  ["performance", "Performance"],
+  ["history", "Signal History"],
+  ["news", "USD Calendar"],
+  ["alerts", "Notifications"],
+] as const;
+type DashboardView = typeof dashboardViews[number][0] | "admin-settings" | "profile";
+
+function currentView(isAdmin: boolean): DashboardView {
+  const hash = location.hash.slice(1);
+  if (hash === "admin-settings" && isAdmin) return hash;
+  if (hash === "profile") return hash;
+  return dashboardViews.find(([id]) => hash === id)?.[0] ?? (isAdmin && !currentSignal() ? "admin-settings" : "signal");
+}
 type PushStatus = { enabled: boolean; test: "queued" | "sent" | "failed" | "expired" | null };
+
+function Profile() {
+  const [profile, setProfile] = useState<{ display_name: string; role: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    const abort = new AbortController();
+    api<NonNullable<typeof profile>>("/api/viewer-profile", { signal: abort.signal })
+      .then(result => { if (!abort.signal.aborted) setProfile(result); })
+      .catch(() => { if (!abort.signal.aborted) setMessage("Could not load your profile."); });
+    return () => abort.abort();
+  }, []);
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const saved = await api<NonNullable<typeof profile>>("/api/viewer-profile", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: profile.display_name }),
+      });
+      setProfile(saved);
+      setMessage("Profile saved.");
+    } catch (failure) {
+      setMessage((failure as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <section className="panel below profile-panel" id="profile" aria-labelledby="profile-title">
+    <div className="panel-heading"><h2 id="profile-title">Profile</h2>
+      {profile && <span className="muted">{profile.role === "admin" ? "Admin" : "Viewer"}</span>}
+    </div>
+    {profile ? <form className="profile-form" onSubmit={event => void save(event)}>
+      <label>Display name<input value={profile.display_name} maxLength={60} autoComplete="nickname"
+        disabled={busy} onChange={event => setProfile({ ...profile, display_name: event.target.value })} /></label>
+      <button type="submit" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
+    </form> : !message && <p className="muted" role="status">Loading profile…</p>}
+    {message && <p role="status">{message}</p>}
+  </section>;
+}
 
 function Alerts({ data }: { data: Dashboard }) {
   const [message, setMessage] = useState("");
@@ -125,6 +182,8 @@ function App({ role, signOut, expired, settings }: {
   role: string | null; signOut: () => Promise<void>; expired: () => void; settings?: ReactNode;
 }) {
   const page = settings ? "/admin" : "/";
+  const hasAdmin = Boolean(settings);
+  const [view, setView] = useState(() => currentView(hasAdmin));
   const [frame, setFrame] = useState<Frame>(() => {
     const requested = new URLSearchParams(location.search).get("frame");
     return frames.find(value => value === requested) ?? "M15";
@@ -146,10 +205,20 @@ function App({ role, signOut, expired, settings }: {
     open: undefined as number | undefined, receivedAt: 0,
   }))[0];
   useEffect(() => {
-    function change() { setSelected(currentSignal()); }
+    function change() {
+      setSelected(currentSignal());
+      setView(currentView(hasAdmin));
+    }
     addEventListener("popstate", change);
-    return () => removeEventListener("popstate", change);
-  }, []);
+    addEventListener("hashchange", change);
+    return () => {
+      removeEventListener("popstate", change);
+      removeEventListener("hashchange", change);
+    };
+  }, [hasAdmin]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [view]);
   useEffect(() => {
     const abort = new AbortController();
     let timer = 0;
@@ -185,7 +254,8 @@ function App({ role, signOut, expired, settings }: {
     event.preventDefault();
     history.pushState(null, "", event.currentTarget.href);
     setSelected(id);
-    document.getElementById("signal")?.scrollIntoView();
+    setView("signal");
+    window.scrollTo(0, 0);
   }
   const signal = data?.active;
   const entry = data?.entry_check;
@@ -195,18 +265,28 @@ function App({ role, signOut, expired, settings }: {
   const showNotificationSetup = !!data?.push_key && "Notification" in window &&
     (matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone) &&
     Notification.permission === "default";
-  return <>
-    <header className="site-header"><div className="header-inner">
-      <a className="wordmark" href={page} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
-      <nav aria-label="Dashboard sections"><a href="#signal">Signal</a><a href="#performance">Performance</a><a href="#history">History</a><a href="#alerts">Alerts</a></nav>
-    </div></header>
-    <main>
+  function viewLink(id: DashboardView, label: string) {
+    return <a key={id} href={id === "signal" ? `${page}#signal` : `#${id}`}
+      aria-current={view === id ? "page" : undefined}
+      onClick={id === "signal" ? event => select(event, null) : undefined}>{label}</a>;
+  }
+  return <div className="dashboard-shell">
+    <aside className="dashboard-sidebar">
+      <a className="wordmark" href={`${page}#signal`} onClick={event => select(event, null)} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+      <nav aria-label="Dashboard sections">
+        {dashboardViews.map(([id, label]) => viewLink(id, label))}
+        {role !== "demo" && viewLink("profile", "Profile")}
+        {hasAdmin && viewLink("admin-settings", "Admin Settings")}
+      </nav>
+    </aside>
+    <main className="dashboard-main">
       {role !== "demo" && <div className="session-actions">
         <InstallButton />
         {showNotificationSetup && <a href="#alerts">Set up notifications</a>}
-        {role === "admin" && <a href={settings ? "#admin-settings" : "/admin"}>Admin settings</a>}
+        {role === "admin" && !hasAdmin && <a href="/admin">Admin settings</a>}
         <button type="button" onClick={() => void signOut()}>Sign out</button>
       </div>}
+      <div hidden={view !== "signal"}>
       <div className="market-heading">
         <div><p className="instrument">GOLD / US DOLLAR</p><h1>{data?.symbol ?? "XAUUSD"} <span>M15</span></h1></div>
         <div className={`feed-state ${data?.status === "STALE" || error ? "warn" : ""}`}>
@@ -224,7 +304,7 @@ function App({ role, signOut, expired, settings }: {
             <div className="panel-heading"><h2 id="signal-title">{selected ? "Selected signal" : "Live signal"}</h2>
               {signal && <span className={signal.direction === "SELL" ? "warn" : "good"}>{signal.direction} · {signal.status}</span>}
             </div>
-            {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to latest signal</a>}
+            {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to live signal</a>}
             {signal ? <>
               <p className="small muted">{signal.strategy ?? "M15 baseline"}</p>
               <div className="entry-value"><span>Entry zone</span><strong>{price(signal.entry[0])}–{price(signal.entry[1])}</strong></div>
@@ -243,7 +323,7 @@ function App({ role, signOut, expired, settings }: {
               {openedEntry?.signal === signal.id && <p className="small muted">
                 At alert open · {openedEntry.check.side} {price(openedEntry.check.price)} · {openedEntry.check.valid ? "Valid" : openedEntry.check.reason}
               </p>}
-            </> : <p className="muted">{selected ? "Signal unavailable." : "Waiting for a confirmed setup."}</p>}
+            </> : <p className="muted" role="status">{selected ? "Signal unavailable." : "Waiting for signal"}</p>}
           </section>
         <section className="panel chart-panel" aria-labelledby="chart-title">
           <div className="chart-header">
@@ -281,8 +361,11 @@ function App({ role, signOut, expired, settings }: {
             </details>
           </section>
       </div>
-      <div className="dashboard-reports">
-        {data && <Performance revision={data.history.map(item => `${item.id}:${item.status}`).join(",")} />}
+      </div>
+      <div className="dashboard-view" hidden={view !== "performance"}>
+        {data ? <Performance revision={data.history.map(item => `${item.id}:${item.status}`).join(",")} /> : <p role="status">Loading performance…</p>}
+      </div>
+      <div className="dashboard-view" hidden={view !== "history"}>
           <section className="panel below" id="history" aria-labelledby="history-title">
             <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
             {data?.history.length ? <ul className="rows">{data.history.map(item =>
@@ -296,12 +379,14 @@ function App({ role, signOut, expired, settings }: {
               })}
             </details>
           </section>
+      </div>
+      <div className="dashboard-view" hidden={view !== "news"}>
         <section className="panel below" id="news" aria-labelledby="news-title">
           <div className="panel-heading"><h2 id="news-title">USD calendar</h2><span className="muted small">{data?.mode === "demo" ? "Mock feed" : "Official sources"}</span></div>
           {data?.calendar.restriction && <p className="warn">{data.calendar.restriction}</p>}
           {data?.calendar.events?.length ? <ul className="rows">{data.calendar.events.map(event =>
             <li key={`${event.source}-${event.time}-${event.title}`}><div>{event.url ? <a href={event.url}>{event.title}</a> : event.title}
-              <p className="muted small">{event.source}
+              <p className="muted small">{event.source} · {event.impact === "medium" ? "Timing watch" : "Entry pause"}
                 {(["actual", "forecast", "previous"] as const).filter(key => event[key] != null).map(key => ` · ${key} ${event[key]}`)}</p></div>
               <span className="row-time">{displayTime(event.time)}<small>MYT</small></span></li>)}</ul> : <p className="muted">No upcoming releases loaded.</p>}
           <details><summary>Headlines and feed freshness</summary>
@@ -311,12 +396,15 @@ function App({ role, signOut, expired, settings }: {
               {item.url ? <a href={item.url}>{item.title}</a> : item.title} · {displayTime(item.time)} MYT</p>)}
           </details>
         </section>
-        {data && <Alerts data={data} />}
       </div>
-      {settings}
+      <div className="dashboard-view" hidden={view !== "alerts" && view !== "profile"}>
+        {view === "profile" && (role === "demo" ? <p className="muted">Sign in to manage a profile.</p> : <Profile />)}
+        {data ? <Alerts data={data} /> : <p role="status">Loading notifications…</p>}
+      </div>
+      <div className="dashboard-view" hidden={view !== "admin-settings"}>{settings}</div>
     </main>
     <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a></footer>
-  </>;
+  </div>;
 }
 
 if ("serviceWorker" in navigator) {

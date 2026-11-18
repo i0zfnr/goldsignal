@@ -24,12 +24,18 @@ def test_access_and_gemini_storage(db, monkeypatch):
     monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
     with TestClient(app) as operator, TestClient(app) as viewer:
         assert viewer.get("/api/dashboard").status_code == 401
+        assert viewer.get("/api/viewer-profile").status_code == 401
         assert viewer.get("/api/admin/settings").status_code == 403
         assert viewer.get("/api/admin/errors").status_code == 403
         login = operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
         assert login.status_code == 200 and "HttpOnly" in login.headers["set-cookie"]
         secret = operator.post("/api/admin/keys", json={"label": "Fixture viewer"}).json()["key"]
         assert viewer.post("/api/auth/viewer", json={"credential": secret}).status_code == 200
+        assert viewer.put("/api/viewer-profile", json={"display_name": " Fixture Viewer "}).json() == {
+            "display_name": "Fixture Viewer", "role": "viewer",
+        }
+        assert viewer.get("/api/viewer-profile").json()["display_name"] == "Fixture Viewer"
+        assert operator.get("/api/viewer-profile").json() == {"display_name": "", "role": "admin"}
         assert viewer.get("/api/dashboard?frame=M1").json()["frame"] == "M1"
         assert viewer.get("/api/admin/errors").status_code == 403
         assert operator.get("/api/admin/errors").json() == {"entries": []}
@@ -60,6 +66,7 @@ def test_access_and_gemini_storage(db, monkeypatch):
             assert provider_key not in str(data.get("ai", "gemini"))
         assert operator.delete("/api/admin/keys", params={"id": settings.json()["keys"][0]["id"]}).status_code == 200
         assert viewer.get("/api/dashboard").status_code == 401
+        assert viewer.get("/api/viewer-profile").status_code == 401
         assert operator.delete("/api/auth/session").status_code == 200
         assert operator.get("/api/admin/settings").status_code == 403
 
@@ -402,11 +409,13 @@ def test_end_to_end_and_duplicate_events(db, monkeypatch):
             tick(step)
         latest = client.get("/api/dashboard", params={"after": state["revision"]}).json()
         assert len(latest["candles"]) == 2
-        assert latest["active"]["status"] == "COMPLETED"
+        assert latest["active"] is None and latest["entry_check"] is None and latest["events"] == []
         assert latest["history"][0]["hits"] == 3
-        assert [row["kind"] for row in latest["events"]] == ["ENTRY", "FILLED", "TP1", "TP2", "TP3"]
-        assert latest["events"][2]["stop"] == 3793.42
-        assert latest["events"][3]["stop"] == 3790.42
+        historical = client.get("/api/dashboard", params={"signal": state["active"]["id"]}).json()
+        assert historical["active"]["status"] == "COMPLETED"
+        assert [row["kind"] for row in historical["events"]] == ["ENTRY", "FILLED", "TP1", "TP2", "TP3"]
+        assert historical["events"][2]["stop"] == 3793.42
+        assert historical["events"][3]["stop"] == 3790.42
         assert len(latest["alerts"]) == 5
         assert len({item["id"] for item in latest["alerts"]}) == 5
         assert client.put("/api/profile", json={}).status_code in (404, 405)
@@ -540,6 +549,17 @@ def test_news_counterfactual(db):
         assert not data.all("signal")
         assert data.all("candidate")[0]["calendar_reason"].startswith("Calendar pause")
         assert data.all("shadow")[0]["hits"] == 3
+
+
+def test_calendar_distinguishes_entry_pause_from_timing_watch():
+    now = datetime(2026, 11, 18, 14, tzinfo=config.NY).timestamp()
+    state = {"sources": dict.fromkeys(("BLS", "BEA", "Fed"), now), "events": [
+        news.event("Census", "Durable goods orders", now, None, impact="medium"),
+    ]}
+    assert news.restriction(state, now, False) is None
+    assert news.nearby_watch_event(state, now)["title"] == "Durable goods orders"
+    state["events"].append(news.event("Fed releases", "FOMC Minutes", now, None))
+    assert news.restriction(state, now, False) == "Calendar pause: FOMC Minutes"
 
 
 def test_expired_push_is_suppressed(db, monkeypatch):

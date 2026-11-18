@@ -60,6 +60,26 @@ def admin(request):
     return actor
 
 
+class ViewerProfile(BaseModel):
+    display_name: str = Field(max_length=60)
+
+
+@router.get("/api/viewer-profile")
+@router.put("/api/viewer-profile")
+def viewer_profile(request: Request, body: ViewerProfile | None = None):
+    actor = identity(request)
+    if not actor:
+        raise HTTPException(401, "Sign in to view your profile.")
+    if request.method == "PUT" and body is None:
+        raise HTTPException(422, "Enter a display name.")
+    with transaction() as store:
+        saved = store.get("viewer_profile", actor["id"], {})
+        if request.method == "PUT" and body is not None:
+            saved = {"display_name": body.display_name.strip()}
+            store.put("viewer_profile", actor["id"], saved)
+    return {"display_name": saved.get("display_name", ""), "role": actor["role"]}
+
+
 def allow_attempt(role):
     now = time.monotonic()
     with attempt_lock:

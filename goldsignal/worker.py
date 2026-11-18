@@ -83,6 +83,10 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
             "pattern": setup_data["pattern"],
             "spread": round(snapshot["quote"]["ask"] - snapshot["quote"]["bid"], 2),
         }
+        watch_event = news.nearby_watch_event(calendar, snapshot["now"])
+        if watch_event:
+            evidence["usd_release_offset_min"] = round((watch_event["time"] - snapshot["now"]) / 60)
+        calendar_rule = " A nearby USD release adds timing risk only." if watch_event else ""
         reserve(MODEL)
         response = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
@@ -91,7 +95,7 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
                 'Review one XAUUSD entry. Keep supplied side and levels. Trend deltas are ordered by timeframe. '
                 'Next4 is historical return in side direction (bps), not a forecast. '
                 'CONFIRM coherent evidence, WAIT uncertainty, REJECT contradiction. Reason max 12 words. '
-                + json.dumps(evidence, separators=(",", ":"))
+                + calendar_rule + " " + json.dumps(evidence, separators=(",", ":"))
             )}]}], "generationConfig": {"responseMimeType": "application/json",
                                         "maxOutputTokens": 512 if MODEL == PRO_MODEL else 96,
                                         "responseSchema": {"type": "OBJECT", "required": ["decision", "reason"],

@@ -18,6 +18,8 @@ from .market import REPLAY_START
 BLS = "https://www.bls.gov/schedule/news_release/bls.ics"
 BEA = "https://www.bea.gov/news/schedule/full"
 FED = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+FED_MONTHLY = "https://www.federalreserve.gov/newsevents/"
+CENSUS = "https://www.census.gov/economic-indicators/calendar-listview-"
 RSS = "https://www.federalreserve.gov/feeds/press_all.xml"
 log = logging.getLogger(__name__)
 
@@ -32,7 +34,8 @@ def manual_pause(store, now):
 
 def event(source, title, ts, url, **values):
     return dict(source=source, title=title, time=int(ts), url=url, actual=values.get("actual"),
-                forecast=values.get("forecast"), previous=values.get("previous"))
+                forecast=values.get("forecast"), previous=values.get("previous"),
+                impact=values.get("impact", "high"))
 
 
 def download(url):
@@ -43,15 +46,18 @@ def download(url):
 
 def bls_events(now):
     keys = {"consumer price index": "CPI", "producer price index": "PPI", "employment situation": "NFP"}
+    watch = {"job openings and labor turnover": "JOLTS", "employment cost index": "ECI",
+             "u.s. import and export price indexes": "Import/export prices", "productivity and costs": "Productivity"}
     rows = []
     for item in Calendar.from_ical(download(BLS)).walk("VEVENT"):
         summary = str(item["SUMMARY"])
-        match = next((abbr for key, abbr in keys.items() if summary.lower().startswith(key)), None)
+        match = next((abbr for key, abbr in {**keys, **watch}.items() if summary.lower().startswith(key)), None)
         if match:
             stamp = item.decoded("DTSTART")
             if isinstance(stamp, datetime):
                 ts = stamp.replace(tzinfo=NY).timestamp() if stamp.tzinfo is None else stamp.timestamp()
-                rows.append(event("BLS", f"{match} · {summary}", ts, str(item.get("URL", BLS))))
+                rows.append(event("BLS", f"{match} · {summary}", ts, str(item.get("URL", BLS)),
+                                  impact="medium" if match in watch.values() else "high"))
     return rows
 
 
@@ -100,6 +106,59 @@ def fed_events(now):
     return rows
 
 
+def fed_monthly_events(now):
+    today = datetime.fromtimestamp(now, NY)
+    months = [(today.year, today.month), (today.year + (today.month == 12), today.month % 12 + 1)]
+    events = {"FOMC Minutes": "high", "FOMC Press Conference": "high", "Beige Book": "medium"}
+    rows = []
+    for year, month in months:
+        url = f"{FED_MONTHLY}{year}-{calendar.month_name[month].lower()}.htm"
+        try:
+            page = BeautifulSoup(download(url), "html.parser")
+        except httpx.HTTPStatusError as exc:
+            if (year, month) != months[0] and exc.response.status_code == 404:
+                continue
+            raise
+        for row in page.select(".row"):
+            title = row.select_one(":scope > .col-xs-7 > p")
+            clock = row.select_one(":scope > .col-xs-2")
+            date = row.select_one(":scope > .col-xs-3")
+            label = title.get_text(" ", strip=True) if title else ""
+            if label not in events or clock is None or date is None:
+                continue
+            local_time = datetime.strptime(clock.get_text(strip=True).replace(".", "").upper(), "%I:%M %p").time()
+            for day in re.findall(r"\d+", date.get_text()):
+                stamp = datetime.combine(datetime(year, month, int(day)).date(), local_time, NY)
+                rows.append(event("Fed releases", label, stamp.timestamp(), url, impact=events[label]))
+    return rows
+
+
+def census_events(now):
+    year = datetime.fromtimestamp(now, NY).year
+    url = f"{CENSUS}{year}.html"
+    page = BeautifulSoup(download(url), "html.parser")
+    releases = {"Advance Monthly Sales for Retail and Food Services": ("Retail sales", "high"),
+                "Advance Report on Durable Goods": ("Durable goods orders", "medium"),
+                "New Residential Construction": ("Housing starts and permits", "medium")}
+    rows = []
+    for row in page.select("tr"):
+        cells = row.find_all("td", recursive=False)
+        if len(cells) < 3:
+            continue
+        title, day, clock = (cell.get_text(" ", strip=True) for cell in cells[:3])
+        release = next((value for prefix, value in releases.items() if title.startswith(prefix)), None)
+        if release:
+            stamp = datetime.strptime(f"{day} {clock}", "%B %d, %Y %I:%M %p").replace(tzinfo=NY)
+            rows.append(event("Census", release[0], stamp.timestamp(), url, impact=release[1]))
+    return rows
+
+
+def nearby_watch_event(state, now):
+    events = (row for row in state.get("events", []) if row.get("impact") == "medium"
+              and -15 * 60 <= row["time"] - now <= 60 * 60)
+    return min(events, key=lambda row: abs(row["time"] - now), default=None)
+
+
 def refresh(demo, now, previous, readers: dict[str, CalendarSource] | None = None):
     if demo:
         week = int((now - REPLAY_START) // (7 * 86400))
@@ -112,11 +171,13 @@ def refresh(demo, now, previous, readers: dict[str, CalendarSource] | None = Non
     state.update(refreshed=now, errors={})
     state.setdefault("sources", {})
     state.setdefault("events", [])
-    readers = readers or {"BLS": bls_events, "BEA": bea_events, "Fed": fed_events}
+    readers = readers or {"BLS": bls_events, "BEA": bea_events, "Fed": fed_events,
+                          "Fed releases": fed_monthly_events, "Census": census_events}
     for name, reader in readers.items():
         try:
             rows = reader(now)
-            if not any(row["time"] >= now for row in rows):
+            if not any(row["time"] >= now and (name != "BLS" or row.get("impact", "high") == "high")
+                       for row in rows):
                 raise ValueError("No upcoming releases parsed")
             state["events"] = [row for row in state["events"] if row["source"] != name] + rows
             state["sources"][name] = now
@@ -153,6 +214,6 @@ def restriction(state, now, demo):
         if key not in sources or now - sources[key] > CALENDAR_MAX_AGE:
             return f"{key} calendar is stale or unavailable"
     for item in state.get("events", []):
-        if item["time"] - NEWS_BEFORE <= now <= item["time"] + NEWS_AFTER:
+        if item.get("impact", "high") == "high" and item["time"] - NEWS_BEFORE <= now <= item["time"] + NEWS_AFTER:
             return f"Calendar pause: {item['title']}"
     return None
