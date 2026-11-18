@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
 import { Access, ApiError, api } from "./access";
 import { InstallButton } from "./install";
+import { CandleClock } from "./candle-clock";
 import type { Dashboard, EntryCheck, Frame } from "./types";
 import "@fontsource/geist/latin-400.css";
 import "@fontsource/geist/latin-600.css";
@@ -88,7 +89,10 @@ function App({ role, signOut, expired, settings }: {
       .catch(() => {});
     return () => { current = false; };
   }, [selected]);
-  const cursor = useState(() => ({ frame: "M15" as Frame, revision: undefined as number | undefined }))[0];
+  const cursor = useState(() => ({
+    frame: "M15" as Frame, revision: undefined as number | undefined,
+    open: undefined as number | undefined, receivedAt: 0,
+  }))[0];
   useEffect(() => {
     function change() { setSelected(currentSignal()); }
     addEventListener("popstate", change);
@@ -104,6 +108,10 @@ function App({ role, signOut, expired, settings }: {
       try {
         const next = await api<Dashboard>(`/api/dashboard?${query}`, { signal: abort.signal });
         if (abort.signal.aborted) return;
+        if (cursor.frame !== frame || cursor.revision === undefined) cursor.open = undefined;
+        const latest = next.candles.at(-1)?.time;
+        if (latest !== undefined && (cursor.open === undefined || latest > cursor.open)) cursor.open = latest;
+        cursor.receivedAt = performance.now();
         cursor.frame = frame;
         cursor.revision = next.revision;
         setData(next);
@@ -159,7 +167,12 @@ function App({ role, signOut, expired, settings }: {
         <section className="panel chart-panel" aria-labelledby="chart-title">
           <div className="chart-header">
             <div><h2 id="chart-title">Price chart</h2><span className="muted small">{frame} candles · UTC</span></div>
-            <div className="quote"><div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div><div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div></div>
+            <div className="quote">
+              <div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div>
+              <div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div>
+              <CandleClock frame={frame} open={data?.frame === frame ? cursor.open : undefined}
+                clock={data?.clock} receivedAt={cursor.receivedAt} status={error ? "STALE" : data?.status} />
+            </div>
           </div>
           <div className="chart-frames" role="group" aria-label="Chart timeframe">
             {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {

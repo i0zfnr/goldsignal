@@ -90,7 +90,9 @@ h1 span { font-size: 0.54em; font-weight: 500; color: var(--muted); margin-left:
 .panel { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .chart-panel { overflow: hidden; align-self: start; }
 .chart-header { padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); }
-.quote { display: flex; gap: clamp(8px, 2vw, 22px); text-align: right; }
+.quote { display: flex; flex-wrap: wrap; justify-content: end; align-items: start; gap: 4px clamp(8px, 2vw, 22px); text-align: right; }
+.candle-clock { padding-inline-start: 8px; border-inline-start: 1px solid var(--line); }
+.candle-clock strong { color: var(--gold); white-space: nowrap; }
 .quote strong, dd, .entry-value strong, .row-time { font-variant-numeric: tabular-nums; }
 .quote strong { font-size: 0.94rem; }
 .chart-shell { position: relative; }
@@ -145,5 +147,6 @@ footer { padding-block: 20px; font-size: 0.8rem; color: var(--muted); }
 @media (max-width: 420px) {
   .header-inner, main, footer { padding-inline: 12px; }
   .chart-header { padding-inline: 10px; }
+  .candle-clock { flex-basis: 100%; padding: 0; border: 0; }
   .session-strip strong { font-size: 0.77rem; }
 }
