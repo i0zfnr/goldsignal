@@ -1,0 +1,257 @@
+from datetime import datetime
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+
+from goldsignal import alerts, config, news, store, worker
+from goldsignal.api import app
+from goldsignal.lifecycle import advance
+from goldsignal.market import REPLAY_START, Replay, demo_profile, demo_spec
+from goldsignal.strategy import account_fit, gate, levels, setup
+
+
+@pytest.fixture
+def db(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.sqlite3'}")
+    monkeypatch.setattr(store, "engine", engine)
+    store.migrate()
+    yield
+    engine.dispose()
+
+
+def sample():
+    return Replay().read(None, 0, 0)
+
+
+def tick(step):
+    snapshot = Replay().read(None, step, 0)
+    return worker.process(Replay(), step, None, news.refresh(True, snapshot["now"], {}), step + 1)
+
+
+def stamp(value):
+    return datetime.fromisoformat(value).timestamp()
+
+
+def test_sell_levels_and_closed_swing():
+    s = sample()
+    candidate = worker.new_candidate(s)
+    assert candidate["direction"] == "SELL"
+    assert candidate["reference"] == 3793.42
+    assert candidate["entry"] == [3793.42, 3796.42]
+    assert candidate["stop"] == 3799.42
+    assert candidate["targets"] == [3790.42, 3787.42, 3783.42]
+    assert (candidate["initial_stop"] - candidate["reference"]) / 0.1 == 60
+    assert candidate["evidence"]["swing_confirmed"] <= s["now"]
+    assert setup(s["bars"], REPLAY_START - 1) is None
+
+
+@pytest.mark.parametrize(("opening", "myt_hour"), [
+    ("2026-03-06T13:00:00+00:00", 21),
+    ("2026-03-09T12:00:00+00:00", 20),
+    ("2026-11-02T13:00:00+00:00", 21),
+])
+def test_dst_and_boundaries(opening, myt_hour):
+    now = stamp(opening)
+    assert not config.session(now - 1)["open"]
+    result = config.session(now)
+    assert result["open"]
+    assert datetime.fromisoformat(result["next_myt"]).hour == myt_hour
+    assert config.session(result["cutoff"] - 1)["open"]
+    assert not config.session(result["cutoff"])["open"]
+
+
+def test_broker_overlap_and_weekend():
+    saturday = stamp("2026-11-21T15:00:00+00:00")
+    assert not config.session(saturday)["open"]
+    monday = stamp("2026-11-23T15:00:00+00:00")
+    assert not config.session(monday, "11:00-12:00")["open"]
+    assert config.session(monday + 3600, "11:00-12:00")["open"]
+
+
+def test_broker_exception_with_early_close(monkeypatch):
+    monday = stamp("2026-11-23T15:00:00+00:00")
+    monkeypatch.setattr(config, "BROKER_DATE_HOURS", {"2026-11-23": "00:00-11:00"})
+    current = config.session(monday, "00:00-24:00")
+    assert current["open"] and current["cutoff"] == monday + 3600
+    assert not config.session(current["cutoff"], "00:00-24:00")["open"]
+
+
+def test_stale_quote_calendar_spread_and_zone():
+    s = sample()
+    now = s["now"]
+    candidate = worker.new_candidate(s)
+    quote = s["quote"]
+    assert gate(candidate, quote, now)[0] == "CONFIRM"
+    assert gate(candidate, {**quote, "time": now - 90}, now)[0] == "WAIT"
+    assert gate(candidate, {**quote, "ask": quote["bid"] + 1}, now)[0] == "WAIT"
+    assert gate(candidate, {**quote, "bid": 3700, "ask": 3700.24}, now)[0] == "WAIT"
+    result, reason = worker.evaluate(candidate, quote, now, {"sources": {"Fixture": 0}})
+    assert result == "WAIT" and "stale" in reason
+
+
+def test_confirmation_after_cutoff(db, monkeypatch):
+    s = sample()
+    end = config.session(s["now"])["cutoff"]
+    before = {**s, "now": end - 1, "quote": {**s["quote"], "time": end - 1}}
+    after = {**s, "now": end, "quote": {**s["quote"], "time": end}}
+    candidate = {**worker.new_candidate(s), "expiry": end}
+    snapshots = iter((before, after))
+
+    class Source:
+        def read(self, *args):
+            return next(snapshots)
+
+    monkeypatch.setattr(worker, "DEMO", False)
+    monkeypatch.setattr(worker, "REVIEW", "ollama")
+    monkeypatch.setattr(worker, "new_candidate", lambda snap: candidate)
+    monkeypatch.setattr(worker, "model_review", lambda *args: ("CONFIRM", "Fixture response"))
+    monkeypatch.setattr(worker, "utc_now", lambda: end)
+    worker.process(Source(), 0, None, {"sources": dict.fromkeys(("BLS", "BEA", "Fed"), end - 1)}, 1)
+    with store.transaction() as data:
+        assert data.get("candidate", candidate["id"])["decision"] == "REJECT"
+        assert not data.all("signal")
+        assert not data.all("alert")
+
+
+def test_small_account_budget_and_exit_policies():
+    now = REPLAY_START
+    signal = {"direction": "SELL", **levels("SELL", 3793.42)}
+    spec = demo_spec(now)
+    profile = {**demo_profile(now), "equity": 100, "free_margin": 100}
+    fit = account_fit(signal, profile, spec, now)
+    assert (fit["decision"], fit["minimum_before_cost"], fit["budget"]) == ("SKIP", 6, 1)
+    assert account_fit(signal, profile, None, now)["decision"] == "SKIP"
+    fit = account_fit(signal, demo_profile(now), spec, now)
+    assert fit["decision"] == "FIT" and fit["lot"] == 0.08
+    assert fit["loss"] <= fit["budget"]
+    profile.update(equity=700, free_margin=100)
+    assert "cannot split" in account_fit(signal, profile, spec, now)["reason"]
+    assert account_fit(signal, {**profile, "exit_policy": "single"}, spec, now)["lot"] == 0.01
+    assert account_fit(signal, demo_profile(now), spec, now, -150)["decision"] == "SKIP"
+    assert account_fit(signal, demo_profile(now), spec, now + 61)["decision"] == "SKIP"
+
+
+def test_tick_order_and_terminal_states():
+    s = sample()
+    signal = worker.new_candidate(s)
+    quote = s["quote"]
+    now = s["now"]
+    assert advance(signal, quote, now, True, signal["costs"])[0][0] == "FILLED"
+    assert advance(signal, {**quote, "ask": 3787}, now + 1, False, signal["costs"]) == [
+        ("TP1", 3793.42), ("TP2", 3790.42),
+    ]
+    assert advance(signal, {**quote, "ask": 3791}, now + 2, False, signal["costs"])[0][0] == "STOPPED"
+    assert advance(signal, {**quote, "ask": 3780}, now + 3, True, signal["costs"]) == []
+    pending = worker.new_candidate(s)
+    assert advance(pending, None, pending["expiry"], False, pending["costs"])[0][0] == "EXPIRED"
+    filled = worker.new_candidate(s)
+    advance(filled, quote, now, True, filled["costs"])
+    assert advance(filled, quote, filled["holding_until"], False, filled["costs"])[0][0] == "TIMED_OUT"
+
+
+def test_filled_signal_updates_after_cutoff(db):
+    s = sample()
+    candidate = worker.new_candidate(s)
+    cutoff = config.session(s["now"])["cutoff"]
+    candidate.update(created=cutoff - 120, expiry=cutoff, eligible={})
+    quote = {**s["quote"], "time": cutoff - 60}
+    advance(candidate, quote, cutoff - 60, True, candidate["costs"])
+    state = {**s, "now": cutoff + 1,
+             "ticks": [{**quote, "time": cutoff + 1, "bid": 3789.77, "ask": 3790.01}]}
+    with store.transaction() as data:
+        data.put("signal", candidate["id"], candidate)
+        worker.track(data, "signal", state, {})
+        assert data.all("event")[0]["kind"] == "TP1"
+        assert data.all("event")[0]["note"] == "Stop moved to reference"
+        assert data.get("signal", candidate["id"])["hits"] == 1
+
+
+def test_end_to_end_and_duplicate_events(db, monkeypatch):
+    def no_network(*args, **kwargs):
+        raise AssertionError("Default demo attempted network access")
+
+    monkeypatch.setattr(worker.httpx, "post", no_network)
+    monkeypatch.setattr(news, "download", no_network)
+    with TestClient(app) as client:
+        tick(0)
+        state = client.get("/api/dashboard").json()
+        assert state["status"] == "DEMO" and len(state["candles"]) == 250
+        assert state["candidate"]["decision"] == "CONFIRM" and state["active"]["status"] == "PENDING"
+        assert state["fit"]["decision"] == "FIT"
+        assert [item["kind"] for item in state["alerts"]] == ["ENTRY"]
+        for step in range(1, 9):
+            tick(step)
+            tick(step)
+        latest = client.get("/api/dashboard", params={"after": state["revision"]}).json()
+        assert len(latest["candles"]) == 2
+        assert latest["active"]["status"] == "COMPLETED"
+        assert latest["history"][0]["hits"] == 3
+        assert [row["kind"] for row in latest["events"]] == ["ENTRY", "FILLED", "TP1", "TP2", "TP3"]
+        assert latest["events"][2]["stop"] == 3793.42
+        assert latest["events"][3]["stop"] == 3790.42
+        assert len(latest["alerts"]) == 5
+        assert len({item["id"] for item in latest["alerts"]}) == 5
+        assert client.put("/api/profile", json={**demo_profile(REPLAY_START), "equity": 100}).status_code == 200
+        small = client.get("/api/dashboard").json()
+        assert small["fit"]["decision"] == "SKIP" and not small["alerts"]
+
+
+def test_news_counterfactual(db):
+    for step in range(24, 33):
+        tick(step)
+    with store.transaction() as data:
+        assert not data.all("signal")
+        assert data.all("candidate")[0]["calendar_reason"].startswith("Calendar pause")
+        assert data.all("shadow")[0]["hits"] == 3
+
+
+def test_expired_push_is_suppressed(db, monkeypatch):
+    monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", "unused.pem")
+    monkeypatch.setattr(alerts, "webpush", lambda *args, **kwargs: pytest.fail("Expired push sent"))
+    tick(0)
+    with store.transaction() as data:
+        signal = data.all("signal")[0]
+        alert = data.all("alert")[0]
+        data.put("push", "demo", {"endpoint": "fixture"})
+        data.put("alert", alert["id"], {**alert, "delivery": "queued"})
+        state = data.get("state", "market")
+        data.put("state", "market", {**state, "now": signal["expiry"]})
+    alerts.send_pending(signal["expiry"])
+    with store.transaction() as data:
+        assert data.all("alert")[0]["delivery"] == "expired"
+
+
+def test_push_transient_failure_retries_once_and_deduplicates(db, monkeypatch):
+    from requests import Response
+
+    monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", "fixture.pem")
+    monkeypatch.setenv("VAPID_SUBJECT", "mailto:test@example.com")
+    calls = []
+
+    def send(*args, **kwargs):
+        calls.append(kwargs["ttl"])
+        if len(calls) == 1:
+            response = Response()
+            response.status_code = 503
+            raise alerts.WebPushException("fixture", response=response)
+
+    monkeypatch.setattr(alerts, "webpush", send)
+    tick(0)
+    with store.transaction() as data:
+        profile = {"id": "demo", **demo_profile(config.utc_now())}
+        data.put("profile", "demo", profile)
+        data.put("push", "demo", {"endpoint": "fixture"})
+        alert = data.all("alert")[0]
+        data.put("alert", alert["id"], {**alert, "delivery": "queued"})
+    alerts.send_pending(REPLAY_START)
+    alerts.send_pending(REPLAY_START)
+    assert len(calls) == 1
+    with store.transaction() as data:
+        state = data.get("state", "market")
+        data.put("state", "market", {**state, "now": state["now"] + 16})
+    alerts.send_pending(REPLAY_START)
+    alerts.send_pending(REPLAY_START)
+    with store.transaction() as data:
+        assert data.all("alert")[0]["delivery"] == "sent"
+    assert len(calls) == 2

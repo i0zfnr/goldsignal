@@ -1,0 +1,14 @@
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+sqlalchemy>=2.0,<3
+pymysql>=1.1,<2
+cryptography>=44
+tzdata
+python-dotenv>=1,<2
+httpx>=0.28,<1
+icalendar>=6,<8
+beautifulsoup4>=4.13,<5
+feedparser>=6,<7
+pywebpush>=2,<3
+pytest>=8,<10
+filelock>=3,<5
