@@ -4,7 +4,6 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -16,6 +15,7 @@ from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, send_pending
 from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
 from .diagnostics import record
+from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .lifecycle import advance
 from .market import MT5, Replay
 from .scalp import scalp_candidate
@@ -67,13 +67,6 @@ def model_review(candidate, snapshot, calendar):
 
 
 def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
-    day = datetime.now(timezone.utc).date().isoformat()
-    with transaction() as store:
-        usage = store.get("ai_usage", "gemini", {})
-        used = usage.get("count", 0) if usage.get("day") == day else 0
-        if used >= 6:
-            return "WAIT", "Gemini daily review limit reached"
-        store.put("ai_usage", "gemini", {"day": day, "count": used + 1})
     try:
         key = encryption().decrypt(settings["ciphertext"].encode()).decode()
         setup_data = candidate["evidence"]
@@ -88,6 +81,7 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
             "pattern": setup_data["pattern"],
             "spread": round(snapshot["quote"]["ask"] - snapshot["quote"]["bid"], 2),
         }
+        reserve(MODEL)
         response = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
             headers={"x-goog-api-key": key}, timeout=8,
@@ -111,9 +105,15 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
         if retrying:
             record("Gemini review", f"Retry returned a valid review ({result['decision']}).", level="info")
         return result["decision"], " ".join(reason.split()[:12])[:160]
+    except GeminiPaused:
+        raise
     except (httpx.TransportError, httpx.HTTPStatusError) as exc:
         status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
         problem = f"HTTP {status}" if status is not None else "connection failed"
+        if status == 429:
+            record("Gemini review", "Review failed (HTTP 429). Gemini calls paused.")
+            until = pause_after_429(exc.response)
+            raise GeminiPaused("Google returned HTTP 429. Gemini calls are paused.", until) from exc
         if status in (None, 500, 502, 503, 504):
             log.warning("Gemini temporarily unavailable (%s)", problem)
             raise GeminiTemporaryError(problem) from exc
@@ -218,9 +218,14 @@ def process(source, step, cursor, calendar, revision):
         if (not stopped and (not model or (retry and now >= retry["after"])) and provider != "rules"
                 and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
             try:
-                model = (gemini_review(gemini, item, snapshot, calendar, retrying=bool(retry)) if configured else
+                model = (gemini_review(gemini, item, snapshot, calendar,
+                                       retrying=bool(retry and retry["failures"])) if configured else
                          model_review(item, snapshot, calendar))
                 retry = None
+            except GeminiPaused as exc:
+                after = now + max(1, exc.resume_at - utc_now())
+                retry = {"failures": retry["failures"] if retry else 0, "after": after} if after < item["expiry"] else None
+                model = "WAIT", str(exc)
             except GeminiTemporaryError as exc:
                 failures = retry["failures"] + 1 if retry else 1
                 clock = snapshot["now"] if DEMO else utc_now()

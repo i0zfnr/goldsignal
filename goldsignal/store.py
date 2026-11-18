@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 
 from sqlalchemy import JSON, BigInteger, Column, Integer, MetaData, String, Table, create_engine, select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from .config import DB, MODE, SYMBOL
 
@@ -40,6 +42,15 @@ class Store:
     def get(self, kind, key, fallback=None):
         value = self.conn.scalar(select(records.c.payload).where(self.where(kind, key)))
         return fallback if value is None else value
+
+    def lock_record(self, kind, key):
+        values = dict(scope=scope, kind=kind, id=key, payload={})
+        if self.conn.dialect.name == "sqlite":
+            statement = sqlite_insert(records).values(**values).on_conflict_do_nothing()
+        else:
+            statement = mysql_insert(records).values(**values).on_duplicate_key_update(id=records.c.id)
+        self.conn.execute(statement)
+        return self.conn.scalar(select(records.c.payload).where(self.where(kind, key)).with_for_update())
 
     def all(self, kind):
         return list(self.conn.scalars(select(records.c.payload).where(self.where(kind))))

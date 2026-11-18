@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from .access import MODEL, admin, encryption
 from .diagnostics import record
+from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .store import transaction
 
 router = APIRouter()
@@ -29,6 +30,7 @@ class Conversation(BaseModel):
 
 def ask(key, turns):
     try:
+        reserve(MODEL)
         response = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
             headers={"x-goog-api-key": key}, timeout=40,
@@ -41,6 +43,7 @@ def ask(key, turns):
         if response.status_code == 404:
             return {"error": "The configured Gemini model is unavailable for this Google project."}
         if response.status_code == 429:
+            pause_after_429(response)
             return {"error": "Google Gemini quota exceeded. Check AI Studio or try again later."}
         response.raise_for_status()
         parts = response.json()["candidates"][0]["content"]["parts"]
@@ -48,6 +51,8 @@ def ask(key, turns):
         if not text:
             record("Gemini chat", "Gemini returned an empty response.")
         return {"text": text} if text else {"error": "Gemini returned an empty response."}
+    except GeminiPaused as exc:
+        return {"error": str(exc)}
     except httpx.HTTPStatusError:
         return {"error": "Gemini did not return a response. Try again."}
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
@@ -60,6 +65,8 @@ def start_chat(body: Conversation, request: Request):
     admin(request)
     if body.turns[-1].role != "user":
         raise HTTPException(422, "End the conversation with a message.")
+    if len(body.model_dump_json().encode()) > 8192:
+        raise HTTPException(400, "This conversation is too large. Send a shorter message.")
     with transaction() as store:
         settings = store.get("ai", "gemini", {})
     if not settings.get("ciphertext"):

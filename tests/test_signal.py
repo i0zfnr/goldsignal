@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from cryptography.fernet import Fernet
@@ -5,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from goldsignal import alerts, chat, config, diagnostics, news, store, worker
+from goldsignal import alerts, chat, config, diagnostics, gemini_budget, news, store, worker
 from goldsignal.api import app
 from goldsignal.access import password_hash
 from goldsignal.lifecycle import advance
@@ -54,7 +55,7 @@ def test_access_and_gemini_storage(db, monkeypatch):
         assert job.status_code == 202
         assert operator.get("/api/admin/chat", params=job.json()).json() == {"text": "Fixture response"}
         with store.transaction() as data:
-            assert data.get("ai_usage", "gemini") is None
+            assert data.get(gemini_budget.KIND, gemini_budget.KEY) is None
         with store.transaction() as data:
             assert provider_key not in str(data.get("ai", "gemini"))
         assert operator.delete("/api/admin/keys", params={"id": settings.json()["keys"][0]["id"]}).status_code == 200
@@ -107,7 +108,7 @@ def test_gemini_caps_and_invalid_review_hold(db, monkeypatch, model, token_cap, 
         assert len(calls) == 1 and not data.all("signal")
         assert data.all("candidate")[0]["reason"] == "Gemini review unavailable"
     s = sample()
-    for _ in range(6):
+    for _ in range(5):
         worker.gemini_review(config_row, worker.new_candidate(s), s, {})
     assert len(calls) == 6
 
@@ -154,11 +155,58 @@ def test_gemini_503_retries_only_while_entry_is_valid(db, monkeypatch):
     worker.process(Source(), 0, None, {}, 4)
     worker.process(Source(), 0, None, {}, 5)
     with store.transaction() as data:
-        assert len(calls) == data.get("ai_usage", "gemini")["count"] == 2
+        assert len(calls) == data.get(gemini_budget.KIND, gemini_budget.KEY)["counts"][worker.MODEL] == 2
         assert len(data.all("signal")) == len(data.all("alert")) == 1
         recovered = data.recent("backend_log", 1)[0]
         assert recovered["level"] == "info"
         assert recovered["message"] == "Retry returned a valid review (CONFIRM)."
+
+
+def test_gemini_shared_rolling_cap_and_daily_reset(db, monkeypatch):
+    import httpx
+
+    model = "gemini-3.5-flash-lite"
+    clock = datetime(2026, 11, 18, 23, 58, tzinfo=gemini_budget.PACIFIC).timestamp()
+    monkeypatch.setattr(gemini_budget, "utc_now", lambda: clock)
+    monkeypatch.setattr(chat, "MODEL", model)
+
+    def reserve_call(_):
+        try:
+            gemini_budget.reserve(model)
+        except gemini_budget.GeminiPaused:
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert sum(pool.map(reserve_call, range(16))) == 10
+
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append(url)
+        return httpx.Response(429, headers={"Retry-After": "90"})
+
+    monkeypatch.setattr(chat.httpx, "post", post)
+    turns = [chat.Turn(role="user", text="hello")]
+    assert "10 requests per minute" in chat.ask("fixture-key", turns)["error"]
+    assert not calls
+    clock += 60
+    assert "Google Gemini quota exceeded" in chat.ask("fixture-key", turns)["error"]
+    with pytest.raises(gemini_budget.GeminiPaused, match="cooling down") as paused:
+        gemini_budget.reserve(model)
+    assert paused.value.resume_at == clock + 90
+    clock += 90
+    assert reserve_call(None)
+
+    with store.transaction() as data:
+        state = data.get(gemini_budget.KIND, gemini_budget.KEY)
+        state["counts"][model] = gemini_budget.FLASH_REQUESTS_PER_DAY
+        data.put(gemini_budget.KIND, gemini_budget.KEY, state)
+    with pytest.raises(gemini_budget.GeminiPaused, match="daily cap") as daily:
+        gemini_budget.reserve(model)
+    clock = daily.value.resume_at
+    assert datetime.fromtimestamp(clock, gemini_budget.PACIFIC).hour == 0
+    assert reserve_call(None)
 
 
 @pytest.fixture
