@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ORIGIN = "http://127.0.0.1:8000"
-ROUTES = {("GET", "/api/dashboard"), ("PUT", "/api/profile"),
+ROUTES = {("GET", "/api/dashboard"),
           ("PUT", "/api/push"), ("DELETE", "/api/push"), ("GET", "/api/auth/session"),
           ("DELETE", "/api/auth/session"), ("POST", "/api/auth/admin"), ("POST", "/api/auth/viewer"),
           ("GET", "/api/admin/settings"), ("POST", "/api/admin/keys"), ("DELETE", "/api/admin/keys"),

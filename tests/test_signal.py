@@ -264,7 +264,7 @@ def test_end_to_end_and_duplicate_events(db, monkeypatch):
         state = client.get("/api/dashboard").json()
         assert state["status"] == "DEMO" and len(state["candles"]) == 250
         assert state["candidate"]["decision"] == "CONFIRM" and state["active"]["status"] == "PENDING"
-        assert state["fit"]["decision"] == "FIT"
+        assert "fit" not in state and "profile" not in state
         assert [item["kind"] for item in state["alerts"]] == ["ENTRY"]
         for step in range(1, 9):
             tick(step)
@@ -278,9 +278,25 @@ def test_end_to_end_and_duplicate_events(db, monkeypatch):
         assert latest["events"][3]["stop"] == 3790.42
         assert len(latest["alerts"]) == 5
         assert len({item["id"] for item in latest["alerts"]}) == 5
-        assert client.put("/api/profile", json={**demo_profile(REPLAY_START), "equity": 100}).status_code == 200
-        small = client.get("/api/dashboard").json()
-        assert small["fit"]["decision"] == "SKIP" and not small["alerts"]
+        assert client.put("/api/profile", json={}).status_code in (404, 405)
+
+
+def test_shared_alerts_require_only_push_opt_in(db):
+    with TestClient(app) as first, TestClient(app) as second:
+        for index, client in enumerate((first, second)):
+            subscription = {"endpoint": f"https://fcm.googleapis.com/fcm/send/viewer-{index}",
+                            "keys": {"p256dh": "A" * 87, "auth": "B" * 22}}
+            assert client.put("/api/push", json=subscription).status_code == 200
+        tick(0)
+        with store.transaction() as data:
+            assert len([a for a in data.all("alert") if a["delivery"] == "queued"]) == 2
+        assert second.delete("/api/push").status_code == 200
+        for step in range(1, 5):
+            tick(step)
+        with store.transaction() as data:
+            tp1 = [a for a in data.all("alert") if a["kind"] == "TP1"]
+            assert sorted(a["delivery"] for a in tp1) == ["preview", "queued"]
+        assert first.get("/api/dashboard").json()["alerts"] == second.get("/api/dashboard").json()["alerts"]
 
 
 def test_news_counterfactual(db):
@@ -295,17 +311,16 @@ def test_news_counterfactual(db):
 def test_expired_push_is_suppressed(db, monkeypatch):
     monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", "unused.pem")
     monkeypatch.setattr(alerts, "webpush", lambda *args, **kwargs: pytest.fail("Expired push sent"))
+    with store.transaction() as data:
+        data.put("push", "demo", {"endpoint": "fixture"})
     tick(0)
     with store.transaction() as data:
         signal = data.all("signal")[0]
-        alert = data.all("alert")[0]
-        data.put("push", "demo", {"endpoint": "fixture"})
-        data.put("alert", alert["id"], {**alert, "delivery": "queued"})
         state = data.get("state", "market")
         data.put("state", "market", {**state, "now": signal["expiry"]})
     alerts.send_pending(signal["expiry"])
     with store.transaction() as data:
-        assert data.all("alert")[0]["delivery"] == "expired"
+        assert next(a for a in data.all("alert") if a["profile"] == "demo")["delivery"] == "expired"
 
 
 def test_push_transient_failure_retries_once_and_deduplicates(db, monkeypatch):
@@ -323,13 +338,9 @@ def test_push_transient_failure_retries_once_and_deduplicates(db, monkeypatch):
             raise alerts.WebPushException("fixture", response=response)
 
     monkeypatch.setattr(alerts, "webpush", send)
-    tick(0)
     with store.transaction() as data:
-        profile = {"id": "demo", **demo_profile(config.utc_now())}
-        data.put("profile", "demo", profile)
         data.put("push", "demo", {"endpoint": "fixture"})
-        alert = data.all("alert")[0]
-        data.put("alert", alert["id"], {**alert, "delivery": "queued"})
+    tick(0)
     alerts.send_pending(REPLAY_START)
     alerts.send_pending(REPLAY_START)
     assert len(calls) == 1
@@ -339,5 +350,5 @@ def test_push_transient_failure_retries_once_and_deduplicates(db, monkeypatch):
     alerts.send_pending(REPLAY_START)
     alerts.send_pending(REPLAY_START)
     with store.transaction() as data:
-        assert data.all("alert")[0]["delivery"] == "sent"
+        assert next(a for a in data.all("alert") if a["profile"] == "demo")["delivery"] == "sent"
     assert len(calls) == 2

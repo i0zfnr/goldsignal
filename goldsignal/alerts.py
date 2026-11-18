@@ -5,10 +5,9 @@ import os
 from pywebpush import WebPushException, webpush
 
 from .config import MODE, utc_now
-from .lifecycle import realized
 from .news import restriction
 from .store import transaction
-from .strategy import account_fit, gate
+from .strategy import gate
 
 log = logging.getLogger(__name__)
 
@@ -43,16 +42,12 @@ def send_pending(now):
             state = store.get("state", "market", {})
             clock = state.get("now", now) if MODE == "demo" else utc_now()
             signal = store.get("signal", alert["signal"])
-            profile = store.get("profile", alert["profile"])
             eligible = True
             if alert["kind"] == "ENTRY":
                 pause = restriction(state.get("calendar", {}), clock, MODE == "demo")
                 quote = state.get("quote") if utc_now() - state.get("heartbeat", 0) <= 30 else None
-                daily = realized(store, alert["profile"], clock, profile["currency"], profile["units_per_currency"]) if profile else 0
                 eligible = bool(signal and signal["status"] == "PENDING" and
-                                gate(signal, quote, clock, pause)[0] == "CONFIRM" and
-                                account_fit(signal, profile, state.get("spec"), clock, daily,
-                                            profile_now=utc_now())["decision"] == "FIT")
+                                gate(signal, quote, clock, pause)[0] == "CONFIRM")
         if not subscription or clock >= alert["valid_until"] or not eligible:
             alert["delivery"] = "expired"
         elif clock >= alert.get("retry_at", 0):

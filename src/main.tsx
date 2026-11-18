@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
 import { Access, ApiError, api } from "./access";
-import type { Dashboard, Frame, Profile } from "./types";
+import type { Dashboard, Frame } from "./types";
 import "@fontsource/geist/latin-400.css";
 import "@fontsource/geist/latin-600.css";
 import "@fontsource/geist/latin-700.css";
@@ -16,69 +16,6 @@ const displayTime = (ts: number) => myt.format(ts * 1000);
 const price = (value?: number | null) => value == null ? "–" : number.format(value);
 const currentSignal = () => new URLSearchParams(location.search).get("signal");
 const frames: Frame[] = ["M1", "M5", "M15", "M30", "H1", "H4"];
-const defaultProfile = (symbol: string): Profile => ({
-  symbol, equity: 100, free_margin: 100, currency: "USD", units_per_currency: 1,
-  risk_pct: 1, daily_loss_pct: 3, exit_policy: "split",
-});
-
-function Account({ data, reload }: { data: Dashboard; reload: () => void }) {
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const profile = data.profile ?? defaultProfile(data.symbol);
-  const profileKey = [profile.equity, profile.free_margin, profile.currency, profile.symbol,
-    profile.risk_pct, profile.daily_loss_pct, profile.units_per_currency, profile.exit_policy].join("|");
-  const fit = data.fit;
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(form);
-    const inputs = ["equity", "free_margin", "risk_pct", "daily_loss_pct", "units_per_currency"];
-    for (const name of inputs) Object.assign(payload, { [name]: Number(form.get(name)) });
-    setBusy(true);
-    try {
-      await api("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      setMessage("Profile saved.");
-      reload();
-    } catch (error) {
-      setMessage((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return <section className="panel side-card" id="account" aria-labelledby="account-title">
-    <div className="panel-heading"><h2 id="account-title">Account fit</h2>
-      {fit && <span className={fit.decision === "FIT" ? "good" : "warn"}>{fit.decision === "FIT" ? "FIT" : "SKIP FOR THIS ACCOUNT"}</span>}
-    </div>
-    <p className="muted">{fit?.reason ?? "Waiting for a signal to estimate risk."}</p>
-    {fit?.budget != null && <dl className="metrics">
-      <div><dt>Risk budget</dt><dd>{price(fit.budget)} <small>{fit.currency}</small></dd></div>
-      <div><dt>Minimum lot</dt><dd>{price(fit.minimum)}</dd></div>
-      <div><dt>Est. stop loss</dt><dd>{price(fit.loss)} <small>{fit.currency} · {price(fit.loss_pct)}%</small></dd></div>
-      <div><dt>Est. margin</dt><dd>{price(fit.margin)} <small>{fit.currency}</small></dd></div>
-      {fit.lot != null && <div><dt>Proposed size</dt><dd>{price(fit.lot)} <small>lots</small></dd></div>}
-    </dl>}
-    {fit?.minimum_before_cost != null && <p className="small muted">Minimum-lot stop loss before costs {price(fit.minimum_before_cost)} {fit.currency}.</p>}
-    <p className="muted small">Tracked daily P/L {price(data.daily)} {profile.currency}. Includes simulated exits tied to this profile.</p>
-    <details>
-      <summary>Edit account profile</summary>
-      <form key={profileKey} onSubmit={save}>
-        <div className="fields">
-          <label>Equity<input name="equity" type="number" min="0.01" step="any" required defaultValue={profile.equity} /></label>
-          <label>Free margin<input name="free_margin" type="number" min="0" step="any" required defaultValue={profile.free_margin} /></label>
-          <label>Currency<input name="currency" required pattern="[A-Z]{3}" maxLength={3} defaultValue={profile.currency} /></label>
-          <label>Broker symbol<input name="symbol" required maxLength={50} defaultValue={profile.symbol} /></label>
-          <label>Risk cap (%)<input name="risk_pct" type="number" min="0.01" max="100" step="any" required defaultValue={profile.risk_pct} /></label>
-          <label>Daily loss limit (%)<input name="daily_loss_pct" type="number" min="0.01" max="100" step="any" required defaultValue={profile.daily_loss_pct} /></label>
-          <label>Account units<select name="units_per_currency" defaultValue={profile.units_per_currency}><option value="1">Standard</option><option value="100">Cent account</option></select></label>
-          <label>Exit policy<select name="exit_policy" defaultValue={profile.exit_policy}><option value="split">TP1–TP3</option>{data.mode === "demo" && <option value="single">TP1 only</option>}</select></label>
-        </div>
-        <button className="primary" type="submit" disabled={busy}>Save profile</button>
-        <p role="status" className="small">{message}</p>
-      </form>
-    </details>
-  </section>;
-}
-
 function Alerts({ data, reload }: { data: Dashboard; reload: () => void }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -120,12 +57,12 @@ function Alerts({ data, reload }: { data: Dashboard; reload: () => void }) {
       {data.push_key && supported && <button disabled={busy} onClick={() => void toggle()}>{data.push_enabled ? "Disable phone alerts" : "Enable phone alerts"}</button>}
     </div>
     <p className="muted small">{!data.push_key ? "Phone delivery requires HTTPS and Web Push keys." :
-      !supported ? "Phone delivery requires a browser with Web Push on HTTPS." : "Save an account profile before enabling phone alerts."}</p>
+      !supported ? "Phone delivery requires a browser with Web Push on HTTPS." : "Opt in to receive shared entry and target updates."}</p>
     {message && <p role="status">{message}</p>}
     {data.alerts.length ? <ul className="rows">
       {data.alerts.slice(0, 6).map(alert => <li key={alert.id}><div><a href={alert.url}>{alert.title}</a>
         <p className="muted small">{alert.body}</p></div><span className="row-time">{displayTime(alert.time)}<small>{alert.delivery}</small></span></li>)}
-    </ul> : <p className="muted">Eligible entries and tracking updates appear here.</p>}
+    </ul> : <p className="muted">Shared entries and tracking updates appear here.</p>}
   </section>;
 }
 
@@ -241,7 +178,6 @@ function App({ role, signOut, expired, settings }: {
             {data?.candidate && <p className="gate">Latest review · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
             {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
           </section>
-          {data && <Account data={data} reload={refresh} />}
         </div>
       </div>
       <div className="lower">

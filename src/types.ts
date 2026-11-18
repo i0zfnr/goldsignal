@@ -11,14 +11,6 @@ export type Signal = {
   evidence: Evidence;
   review?: { provider: string; reason: string };
 };
-export type Profile = {
-  equity: number; free_margin: number; currency: string; units_per_currency: 1 | 100;
-  risk_pct: number; daily_loss_pct: number; symbol: string; exit_policy: "split" | "single";
-};
-export type Fit = {
-  decision: "FIT" | "SKIP"; reason: string; currency?: string; budget?: number;
-  lot?: number; minimum?: number; minimum_before_cost?: number; loss?: number; margin?: number; loss_pct?: number;
-};
 type News = { title: string; time: number; source: string; url: string | null; first_seen?: number;
   actual?: string; forecast?: string; previous?: string };
 export type Dashboard = {
@@ -28,8 +20,8 @@ export type Dashboard = {
   revision: number; candles: Candle[]; active: Signal | null; history: Signal[];
   frame: Frame;
   events: { id: string; kind: string; time: number; stop: number; note: string | null }[];
-  candidate: { decision: string; reason: string; evidence: Evidence } | null; profile: Profile | null; fit: Fit | null;
-  daily: number; calendar: { restriction: string | null; events: News[]; headlines: News[];
+  candidate: { decision: string; reason: string; evidence: Evidence } | null;
+  calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };
   alerts: { id: string; title: string; body: string; time: number; url: string; delivery: string }[];
   push_key: string | null; push_enabled: boolean;

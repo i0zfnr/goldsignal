@@ -12,11 +12,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
 from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
-from .market import demo_profile
 from .news import restriction
 from .store import migrate, transaction
-from .strategy import account_fit
-from .lifecycle import realized
 from .access import identity, router
 
 
@@ -82,15 +79,9 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         status = "STALE" if state.get("error") or wall - state.get("heartbeat", 0) > 30 else (
             "MARKET CLOSED" if state.get("closed") else "STALE" if stale else "DEMO" if demo else "LIVE"
         )
-        spec = state.get("spec") if status != "STALE" else None
         history = sorted(store.all("signal"), key=lambda s: s["created"], reverse=True)
         active = next((s for s in history if s["status"] in ("PENDING", "FILLED")), None)
         selected = store.get("signal", signal) if signal else active or next(iter(history), None)
-        profile = store.get("profile", profile_id)
-        preview_id = profile_id if profile else "demo" if demo else profile_id
-        defaults = demo_profile(wall) if demo else None
-        profile = profile or defaults
-        daily = realized(store, preview_id, now, profile["currency"], profile["units_per_currency"]) if profile else 0
         candidate = max(store.all("candidate"), key=lambda row: row["evaluated"], default=None)
         calendar = state.get("calendar", {})
         window = session(now)
@@ -105,35 +96,14 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             history=[public(item) for item in history[:15]],
             events=sorted((e for e in store.all("event") if selected and e["signal"] == selected["id"]), key=lambda e: e["time"]),
             candidate=public(candidate) if candidate else None,
-            profile={key: value for key, value in profile.items() if key != "id"} if profile else None,
-            fit=account_fit(selected, profile, spec, now, daily, profile_now=wall) if selected else None, daily=daily,
             calendar={**calendar, "events": sorted(
                 (row for row in calendar.get("events", []) if row["time"] >= now),
                 key=lambda row: row["time"])[:6], "restriction": restriction(calendar, now, demo)},
-            alerts=sorted((a for a in store.all("alert") if a["profile"] == preview_id),
+            alerts=sorted((a for a in store.all("alert") if a["profile"] == "shared"),
                           key=lambda a: a["time"], reverse=True)[:20],
             push_key=os.getenv("VAPID_PUBLIC_KEY"), push_enabled=bool(store.get("push", profile_id)),
             metrics={"with_news": metrics(history), "without_news": metrics(store.all("shadow"))},
         )
-
-
-class Profile(BaseModel):
-    equity: float = Field(gt=0, le=1e12)
-    free_margin: float = Field(ge=0, le=1e12)
-    currency: str = Field(pattern=r"^[A-Z]{3}$")
-    units_per_currency: Literal[1, 100] = 1
-    risk_pct: float = Field(gt=0, le=100)
-    daily_loss_pct: float = Field(gt=0, le=100)
-    symbol: str = Field(min_length=1, max_length=50)
-    exit_policy: Literal["split", "single"] = "split"
-
-
-@app.put("/api/profile")
-def save_profile(profile: Profile, request: Request, response: Response):
-    key = get_id(request, response)
-    with transaction() as store:
-        store.put("profile", key, dict(id=key, updated=utc_now(), max_age=86400, **profile.model_dump()))
-    return {"saved": True}
 
 
 class PushKeys(BaseModel):
@@ -161,8 +131,6 @@ def subscribe(subscription: Subscription, request: Request, response: Response):
     ):
         raise HTTPException(422, "Unsupported Web Push endpoint")
     with transaction() as store:
-        if not store.get("profile", key):
-            raise HTTPException(409, "Save an account profile before enabling push")
         store.put("push", key, subscription.model_dump())
     return {"enabled": True}
 
@@ -170,7 +138,7 @@ def subscribe(subscription: Subscription, request: Request, response: Response):
 @app.delete("/api/push")
 def unsubscribe(request: Request, response: Response):
     with transaction() as store:
-        store.put("push", get_id(request, response), {})
+        store.delete("push", get_id(request, response))
     return {"enabled": False}
 
 

@@ -12,7 +12,7 @@ const publicKey = createPublicKey({
 const pending = new Map();
 const nonces = new Map();
 const routes = new Set([
-  "GET /api/dashboard", "PUT /api/profile", "PUT /api/push", "DELETE /api/push",
+  "GET /api/dashboard", "PUT /api/push", "DELETE /api/push",
   "GET /api/auth/session", "DELETE /api/auth/session", "POST /api/auth/admin", "POST /api/auth/viewer",
   "GET /api/admin/settings", "POST /api/admin/keys", "DELETE /api/admin/keys", "PUT /api/admin/gemini",
 ]);

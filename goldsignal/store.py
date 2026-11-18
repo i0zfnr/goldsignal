@@ -44,6 +44,9 @@ class Store:
     def all(self, kind):
         return list(self.conn.scalars(select(records.c.payload).where(self.where(kind))))
 
+    def items(self, kind):
+        return self.conn.execute(select(records.c.id, records.c.payload).where(self.where(kind))).all()
+
     def put(self, kind, key, value):
         result = self.conn.execute(records.update().where(self.where(kind, key)).values(payload=value))
         if result.rowcount == 0:

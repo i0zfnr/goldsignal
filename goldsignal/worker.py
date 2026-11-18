@@ -15,10 +15,10 @@ from . import news
 from .access import MODEL, encryption
 from .alerts import add_alert, send_pending
 from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
-from .lifecycle import advance, realized
-from .market import MT5, Replay, demo_profile
+from .lifecycle import advance
+from .market import MT5, Replay
 from .store import migrate, transaction
-from .strategy import account_fit, gate, levels, setup
+from .strategy import gate, levels, setup
 
 log = logging.getLogger(__name__)
 DEMO = MODE == "demo"
@@ -153,11 +153,10 @@ def record_event(store, signal, name, ts):
     note = "Stop moved to reference" if name == "TP1" and signal["fill"] != signal["reference"] else None
     store.put("event", key, dict(id=key, signal=signal["id"], kind=name, time=ts,
                                  fill=signal["fill"], stop=signal["stop"], note=note))
-    for profile_id, entry in signal["eligible"].items():
-        if entry["policy"] == "single" and (name in ("TP2", "TP3") or
-                                           (signal["hits"] and name in ("STOPPED", "TIMED_OUT"))):
-            continue
-        add_alert(store, profile_id, signal, name, ts)
+    add_alert(store, "shared", signal, name, ts)
+    for recipient, subscription in store.items("push"):
+        if subscription:
+            add_alert(store, recipient, signal, name, ts)
 
 
 def process(source, step, cursor, calendar, revision):
@@ -204,21 +203,9 @@ def process(source, step, cursor, calendar, revision):
             if baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(candidate, exits=[], created=now))
             if decision == "CONFIRM":
-                eligible = {}
-                profiles = store.all("profile")
-                if DEMO:
-                    profiles.append({"id": "demo", **demo_profile(utc_now())})
-                for profile in profiles:
-                    profile_id = profile["id"]
-                    fit = account_fit(candidate, profile, snapshot["spec"], now,
-                                      realized(store, profile_id, now, profile["currency"], profile["units_per_currency"]),
-                                      profile_now=utc_now())
-                    if fit["decision"] == "FIT":
-                        eligible[profile_id] = dict(fit=fit, step=snapshot["spec"]["step"], policy=profile["exit_policy"],
-                                                    units=profile["units_per_currency"])
                 now = snapshot["now"] if DEMO else utc_now()
                 if evaluate(candidate, quote, now, calendar, review_gate)[0] == "CONFIRM":
-                    candidate.update(created=now, eligible=eligible)
+                    candidate.update(created=now)
                     if model:
                         candidate["review"] = {"provider": review_provider, "reason": model[1]}
                     store.put("signal", key, candidate)
