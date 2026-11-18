@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
-import type { Dashboard, Profile } from "./types";
+import { Access, ApiError, api } from "./access";
+import type { Dashboard, Frame, Profile } from "./types";
 import "@fontsource/geist/latin-400.css";
 import "@fontsource/geist/latin-600.css";
 import "@fontsource/geist/latin-700.css";
@@ -14,19 +15,11 @@ const myt = new Intl.DateTimeFormat("en-MY", {
 const displayTime = (ts: number) => myt.format(ts * 1000);
 const price = (value?: number | null) => value == null ? "–" : number.format(value);
 const currentSignal = () => new URLSearchParams(location.search).get("signal");
+const frames: Frame[] = ["M1", "M5", "M15", "M30", "H1", "H4"];
 const defaultProfile = (symbol: string): Profile => ({
   symbol, equity: 100, free_margin: 100, currency: "USD", units_per_currency: 1,
   risk_pct: 1, daily_loss_pct: 3, exit_policy: "split",
 });
-
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, options);
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(typeof data.detail === "string" ? data.detail : "Request failed. Check the values and try again.");
-  }
-  return response.json();
-}
 
 function Account({ data, reload }: { data: Dashboard; reload: () => void }) {
   const [message, setMessage] = useState("");
@@ -136,12 +129,13 @@ function Alerts({ data, reload }: { data: Dashboard; reload: () => void }) {
   </section>;
 }
 
-function App() {
+function App({ role, signOut, expired }: { role: string | null; signOut: () => Promise<void>; expired: () => void }) {
+  const [frame, setFrame] = useState<Frame>("M15");
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const [selected, setSelected] = useState(currentSignal);
-  const cursor = useState(() => ({ revision: undefined as number | undefined }))[0];
+  const cursor = useState(() => ({ frame: "M15" as Frame, revision: undefined as number | undefined }))[0];
   useEffect(() => {
     function change() { setSelected(currentSignal()); }
     addEventListener("popstate", change);
@@ -151,23 +145,28 @@ function App() {
     const abort = new AbortController();
     let timer = 0;
     async function poll() {
-      const query = new URLSearchParams();
-      if (cursor.revision !== undefined) query.set("after", String(cursor.revision));
+      const query = new URLSearchParams({ frame });
+      if (cursor.frame === frame && cursor.revision !== undefined) query.set("after", String(cursor.revision));
       if (selected) query.set("signal", selected);
       try {
         const next = await api<Dashboard>(`/api/dashboard?${query}`, { signal: abort.signal });
         if (abort.signal.aborted) return;
+        cursor.frame = frame;
         cursor.revision = next.revision;
         setData(next);
         setError("");
-      } catch {
+      } catch (failure) {
+        if (failure instanceof ApiError && failure.status === 401 && !abort.signal.aborted) {
+          expired();
+          return;
+        }
         if (!abort.signal.aborted) setError("Dashboard connection lost. Retrying…");
       }
-      if (!abort.signal.aborted) timer = window.setTimeout(poll, 2000);
+      if (!abort.signal.aborted) timer = window.setTimeout(poll, 1000);
     }
     void poll();
     return () => { abort.abort(); clearTimeout(timer); };
-  }, [selected, reload, cursor]);
+  }, [selected, reload, cursor, expired, frame]);
   function refresh() { setReload(value => value + 1); }
   function select(event: React.MouseEvent<HTMLAnchorElement>, id: string | null) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -178,12 +177,17 @@ function App() {
   }
   const signal = data?.active;
   const session = data?.session;
+  const pattern = data?.candidate?.evidence.pattern;
   return <>
     <header className="site-header"><div className="header-inner">
       <a className="wordmark" href="/" aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
       <nav aria-label="Dashboard sections"><a href="#signal">Signal</a><a href="#history">History</a><a href="#alerts">Alerts</a></nav>
     </div></header>
     <main>
+      {role !== "demo" && <div className="session-actions">
+        {role === "admin" && <a href="/admin">Admin dashboard</a>}
+        <button type="button" onClick={() => void signOut()}>Sign out</button>
+      </div>}
       <div className="market-heading">
         <div><p className="instrument">GOLD / US DOLLAR</p><h1>{data?.symbol ?? "XAUUSD"} <span>M15</span></h1></div>
         <div className={`feed-state ${data?.status === "STALE" || error ? "warn" : ""}`}>
@@ -199,10 +203,19 @@ function App() {
       <div className="workspace">
         <section className="panel chart-panel" aria-labelledby="chart-title">
           <div className="chart-header">
-            <div><h2 id="chart-title">Price chart</h2><span className="muted small">15-minute candles · UTC</span></div>
+            <div><h2 id="chart-title">Price chart</h2><span className="muted small">{frame} candles · UTC</span></div>
             <div className="quote"><div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div><div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div></div>
           </div>
-          <Chart candles={data?.candles ?? []} signal={signal ?? null} />
+          <div className="chart-frames" role="group" aria-label="Chart timeframe">
+            {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {
+              if (value !== frame) {
+                cursor.revision = undefined;
+                setFrame(value);
+              }
+            }}>{value}</button>)}
+          </div>
+          <Chart key={frame} frame={frame} candles={data?.frame === frame ? data.candles : []} signal={signal ?? null}
+            quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null} />
           <div className="chart-footer"><span><i className="key entry" /> Entry zone</span><span><i className="key stop" /> Stop</span><span><i className="key target" /> Targets</span></div>
         </section>
         <div className="side">
@@ -219,9 +232,11 @@ function App() {
               <p className="small muted">Initial SL {price(signal.initial_stop)} · Fill {price(signal.fill)}
                 {signal.hits === 1 && signal.fill !== signal.reference ? " · Stop moved to reference" : ""}</p>
               <p className="reason"><strong>{signal.evidence.grade}</strong> · {signal.evidence.reason}</p>
+              {signal.review?.provider === "gemini" && <p className="small"><strong>Gemini</strong> · {signal.review.reason}</p>}
               <p className="small muted">Published {displayTime(signal.created)} · Entry expiry {displayTime(signal.expiry)} MYT</p>
             </> : <p className="muted">{selected ? "Signal unavailable." : "Waiting for a confirmed setup."}</p>}
             {data?.candidate && <p className="gate">Latest review · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
+            {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
           </section>
           {data && <Account data={data} reload={refresh} />}
         </div>
@@ -262,4 +277,5 @@ function App() {
   </>;
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(<Access
+  dashboard={(role, signOut, expired) => <App role={role} signOut={signOut} expired={expired} />} />);

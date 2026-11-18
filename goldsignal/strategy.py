@@ -1,7 +1,45 @@
 from collections import defaultdict
 from decimal import Decimal, ROUND_FLOOR
+from statistics import median
 
 from .config import MAX_SPREAD, STALE_SECONDS, SWING, TREND, ZONE_WIDTH, SYMBOL, session
+
+PATTERN_HISTORY = 1000
+
+
+def compare_pattern(closed, sign):
+    bars = closed[-(PATTERN_HISTORY + 9):]
+    if len(bars) < 9:
+        return {"history": max(0, len(bars) - 1), "rsi8": None, "matches": 0, "next4_bps": None}
+    gains = losses = 0.0
+    features = {}
+    for i, (previous, bar) in enumerate(zip(bars, bars[1:]), 1):
+        change = bar["close"] - previous["close"]
+        gain, loss = max(change, 0), max(-change, 0)
+        if i <= 8:
+            gains += gain / 8
+            losses += loss / 8
+        else:
+            gains = (7 * gains + gain) / 8
+            losses = (7 * losses + loss) / 8
+        if i >= 8:
+            rsi = 100 * gains / (gains + losses) if gains + losses else 50
+            change4 = 10000 * (bar["close"] / bars[i - 4]["close"] - 1)
+            spread = bar["high"] - bar["low"]
+            body = (bar["close"] - bar["open"]) / spread if spread > 0 else 0
+            features[i] = (rsi, change4, body)
+    newest = len(bars) - 1
+    current = features[newest]
+    comparisons = []
+    for i in range(max(8, newest - PATTERN_HISTORY), newest - 4):
+        if bars[i + 4]["time"] - bars[i - 4]["time"] != 8 * 900:
+            continue
+        distance = sum(abs(a - b) / scale for a, b, scale in zip(current, features[i], (20, 20, 0.5)))
+        move = 10000 * sign * (bars[i + 4]["close"] / bars[i]["close"] - 1)
+        comparisons.append((distance, move))
+    matches = sorted(comparisons)[:5]
+    return {"history": min(PATTERN_HISTORY, newest), "rsi8": round(current[0], 1),
+            "matches": len(matches), "next4_bps": round(median(move for _, move in matches), 2) if matches else None}
 
 
 def aggregate(bars, period):
@@ -45,6 +83,7 @@ def setup(bars, now):
                 return {
                     "direction": direction, "candle": candle, "swing": closed[i],
                     "swing_confirmed": closed[i + SWING]["time"] + 900, "trend_closes": trends,
+                    "pattern": compare_pattern(closed, sign),
                     "grade": "Aligned",
                     "reason": f"Rejected M15 {'support' if sign == 1 else 'resistance'} with M15, M30 and H1 trend agreement.",
                 }

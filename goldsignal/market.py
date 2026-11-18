@@ -4,6 +4,10 @@ from datetime import datetime
 from typing import Protocol
 
 from .config import BROKER_HOURS, NY, SYMBOL, UTC, broker_windows
+from .strategy import PATTERN_HISTORY
+
+MT5_HISTORY = PATTERN_HISTORY + 10
+FRAMES = {"M1": 60, "M5": 300, "M30": 1800, "H1": 3600, "H4": 14400}
 
 REPLAY_START = int(datetime(2026, 11, 16, 15, tzinfo=UTC).timestamp())
 REPLAY_PRICES = (3793.62, 3793.52, 3794.42, 3792.90, 3790.10, 3789.70,
@@ -25,6 +29,32 @@ def demo_profile(now):
     return dict(symbol=SYMBOL, updated=now, max_age=86400, equity=5000, free_margin=4000,
                 currency="USD", units_per_currency=1, risk_pct=1, daily_loss_pct=3,
                 exit_policy="split")
+
+
+def replay_frames(history, now):
+    frames = {}
+    for name, period in FRAMES.items():
+        rows = []
+        if period < 900:
+            for candle in history[-(250 * period // 900 + 2):]:
+                for offset in range(0, 900, period):
+                    stamp = candle["time"] + offset
+                    if stamp > now:
+                        break
+                    start = candle["open"] + (candle["close"] - candle["open"]) * offset / 900
+                    end = candle["open"] + (candle["close"] - candle["open"]) * (offset + period) / 900
+                    rows.append(bar(stamp, start, max(start, end), min(start, end), end))
+        else:
+            for candle in history:
+                stamp = candle["time"] // period * period
+                if rows and rows[-1]["time"] == stamp:
+                    prior = rows[-1]
+                    rows[-1] = bar(stamp, prior["open"], max(prior["high"], candle["high"]),
+                                   min(prior["low"], candle["low"]), candle["close"])
+                else:
+                    rows.append({**candle, "time": stamp})
+        frames[name] = rows[-250:]
+    return frames
 
 
 class MarketSource(Protocol):
@@ -56,7 +86,7 @@ class Replay:
             prices = quotes[offset:offset + 5]
             history.append(bar(start + offset * 180, prices[0], max(prices), min(prices), prices[-1]))
         quote = dict(time=ts, bid=price, ask=round(price + 0.24, 2), available=True)
-        return dict(now=ts, bars=history, quote=quote, ticks=[quote], spec=demo_spec(ts),
+        return dict(now=ts, bars=history, frames=replay_frames(history, ts), quote=quote, ticks=[quote], spec=demo_spec(ts),
                     closed=False, cursor=ts)
 
 
@@ -69,6 +99,7 @@ class MT5:
         self.offset = int(os.getenv("MT5_SERVER_OFFSET_MINUTES", "0")) * 60
         self.connected = False
         self.history = {}
+        self.loaded_frames = set()
         if not BROKER_HOURS:
             raise ValueError("Set BROKER_HOURS from the exact broker symbol schedule")
 
@@ -94,14 +125,17 @@ class MT5:
                           mt5.SYMBOL_TRADE_MODE_CLOSEONLY: "EXIT", mt5.SYMBOL_TRADE_MODE_DISABLED: "EXIT"}.get(
                               info.trade_mode, "BOTH")
             quote["permission"] = permission
-            start = cursor - 900 if cursor is not None else now - 253 * 900
+            start = cursor - 900 if cursor is not None else now
             if not self.history:
-                start = min(now - 253 * 900, start)
-            candles = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_M15, 0, 253) if cursor is None else (
-                mt5.copy_rates_range(SYMBOL, mt5.TIMEFRAME_M15,
+                initial = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_M15, 0, MT5_HISTORY)
+                if initial is None:
+                    raise RuntimeError(f"MT5 history fetch failed: {mt5.last_error()}")
+                for row in initial:
+                    stamp = int(row["time"]) - self.offset
+                    self.history[stamp] = bar(stamp, row["open"], row["high"], row["low"], row["close"])
+            candles = () if cursor is None else mt5.copy_rates_range(SYMBOL, mt5.TIMEFRAME_M15,
                                      datetime.fromtimestamp(start + self.offset, UTC),
                                      datetime.fromtimestamp(now + self.offset, UTC))
-            )
             if candles is None:
                 raise RuntimeError(f"MT5 candle fetch failed: {mt5.last_error()}")
             ticks = []
@@ -125,13 +159,33 @@ class MT5:
                 stamp = int(row["time"]) - self.offset
                 bars[stamp] = bar(stamp, row["open"], row["high"], row["low"], row["close"])
             ordered = sorted(bars)
-            self.history = {key: bars[key] for key in ordered[-253:]}
+            self.history = {key: bars[key] for key in ordered[-MT5_HISTORY:]}
+            frames = self.chart_frames(cursor, now)
             return dict(now=now, quote=quote, ticks=ticks, cursor=end, closed=closed,
-                        bars=[bars[key] for key in ordered], spec=self.spec(info, now))
+                        bars=[bars[key] for key in ordered], frames=frames, spec=self.spec(info, now))
         except Exception:
             mt5.shutdown()
             self.connected = False
             raise
+
+    def chart_frames(self, cursor, now):
+        frames = {}
+        mt5 = self.mt5
+        for name, period in FRAMES.items():
+            timeframe = getattr(mt5, f"TIMEFRAME_{name}")
+            if name not in self.loaded_frames or cursor is None:
+                rows = mt5.copy_rates_from_pos(SYMBOL, timeframe, 0, 250)
+            else:
+                rows = mt5.copy_rates_range(SYMBOL, timeframe,
+                                            datetime.fromtimestamp(cursor - period + self.offset, UTC),
+                                            datetime.fromtimestamp(now + self.offset, UTC))
+            if rows is not None and len(rows):
+                frames[name] = [
+                    bar(int(row["time"]) - self.offset, row["open"], row["high"], row["low"], row["close"])
+                    for row in rows
+                ]
+                self.loaded_frames.add(name)
+        return frames
 
     @staticmethod
     def quote(ms, bid, ask, available):

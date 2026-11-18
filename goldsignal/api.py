@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 
 from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
 from .market import demo_profile
@@ -15,6 +17,7 @@ from .news import restriction
 from .store import migrate, transaction
 from .strategy import account_fit
 from .lifecycle import realized
+from .access import identity, router
 
 
 @asynccontextmanager
@@ -24,10 +27,30 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(router)
 COOKIE = "goldsignal_viewer"
 
 
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, exc):
+    return JSONResponse({"detail": "Check the submitted fields and try again."}, status_code=422,
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.middleware("http")
+async def private_responses(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def get_id(request, response):
+    actor = identity(request)
+    if actor:
+        return actor["id"]
+    if MODE != "demo" or os.getenv("ADMIN_PASSWORD_HASH"):
+        raise HTTPException(401, "Sign in to use Goldsignal.")
     key = request.cookies.get(COOKIE, "")
     if len(key) != 32 or any(c not in "0123456789abcdef" for c in key):
         key = secrets.token_hex(16)
@@ -44,7 +67,8 @@ def metrics(signals):
 
 
 @app.get("/api/dashboard")
-def dashboard(request: Request, response: Response, after: int | None = None, signal: str | None = None):
+def dashboard(request: Request, response: Response, after: int | None = None, signal: str | None = None,
+              frame: Literal["M1", "M5", "M15", "M30", "H1", "H4"] = "M15"):
     profile_id = get_id(request, response)
     response.headers["Cache-Control"] = "no-store"
     with transaction() as store:
@@ -76,7 +100,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             return {key: value for key, value in item.items() if key not in ("eligible", "costs")}
         return dict(
             symbol=SYMBOL, mode=MODE, status=status, clock=now, quote=quote, heartbeat=state.get("heartbeat"),
-            error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after),
+            error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after, frame), frame=frame,
             session=window, active=public(selected) if selected else None,
             history=[public(item) for item in history[:15]],
             events=sorted((e for e in store.all("event") if selected and e["signal"] == selected["id"]), key=lambda e: e["time"]),
@@ -151,4 +175,8 @@ def unsubscribe(request: Request, response: Response):
 
 
 if Path("dist/index.html").is_file():
+    @app.get("/admin", include_in_schema=False)
+    def admin_page():
+        return FileResponse("dist/index.html")
+
     app.mount("/", StaticFiles(directory="dist", html=True), name="dashboard")

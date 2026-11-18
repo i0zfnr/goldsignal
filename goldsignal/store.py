@@ -49,26 +49,31 @@ class Store:
         if result.rowcount == 0:
             self.conn.execute(records.insert().values(scope=scope, kind=kind, id=str(key), payload=value))
 
-    def chart(self, after=None):
-        query = select(candles.c.payload).where(candles.c.scope == scope)
+    def delete(self, kind, key):
+        self.conn.execute(records.delete().where(self.where(kind, key)))
+
+    def chart(self, after=None, frame="M15"):
+        candle_scope = scope if frame == "M15" else f"{scope}:{frame}"
+        query = select(candles.c.payload).where(candles.c.scope == candle_scope)
         if after is not None:
             return list(self.conn.scalars(query.where(candles.c.revision > after).order_by(candles.c.time)))
         return list(reversed(list(self.conn.scalars(query.order_by(candles.c.time.desc()).limit(250)))))
 
-    def save_bars(self, bars, revision):
+    def save_bars(self, bars, revision, frame="M15"):
         if not bars:
             return
+        candle_scope = scope if frame == "M15" else f"{scope}:{frame}"
         query = select(candles.c.time, candles.c.payload).where(
-            candles.c.scope == scope, candles.c.time.between(bars[0]["time"], bars[-1]["time"]),
+            candles.c.scope == candle_scope, candles.c.time.between(bars[0]["time"], bars[-1]["time"]),
         )
         current = dict(self.conn.execute(query).all())
         new = []
         for bar in bars:
             stamp = bar["time"]
             if stamp not in current:
-                new.append(dict(scope=scope, time=stamp, revision=revision, payload=bar))
+                new.append(dict(scope=candle_scope, time=stamp, revision=revision, payload=bar))
             elif bar != current[stamp]:
-                self.conn.execute(candles.update().where(candles.c.scope == scope, candles.c.time == stamp)
+                self.conn.execute(candles.update().where(candles.c.scope == candle_scope, candles.c.time == stamp)
                                   .values(revision=revision, payload=bar))
         if new:
             self.conn.execute(candles.insert(), new)

@@ -1,11 +1,15 @@
 import type { CandlestickData, UTCTimestamp } from "lightweight-charts";
 
 export type Candle = CandlestickData<UTCTimestamp>;
+export type Frame = "M1" | "M5" | "M15" | "M30" | "H1" | "H4";
+type Pattern = { rsi8: number | null; history: number; matches: number; next4_bps: number | null };
+type Evidence = { reason: string; grade: string; pattern?: Pattern };
 export type Signal = {
   id: string; direction: "BUY" | "SELL"; created: number; expiry: number;
   entry: [number, number]; initial_stop: number; stop: number; reference: number;
   targets: number[]; fill: number | null; status: string; hits: number;
-  evidence: { reason: string; grade: string };
+  evidence: Evidence;
+  review?: { provider: string; reason: string };
 };
 export type Profile = {
   equity: number; free_margin: number; currency: string; units_per_currency: 1 | 100;
@@ -22,8 +26,9 @@ export type Dashboard = {
   quote: { bid: number; ask: number; time: number } | null;
   session: { open: boolean; opening: number; cutoff: number; next_myt: string | null };
   revision: number; candles: Candle[]; active: Signal | null; history: Signal[];
+  frame: Frame;
   events: { id: string; kind: string; time: number; stop: number; note: string | null }[];
-  candidate: { decision: string; reason: string } | null; profile: Profile | null; fit: Fit | null;
+  candidate: { decision: string; reason: string; evidence: Evidence } | null; profile: Profile | null; fit: Fit | null;
   daily: number; calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };
   alerts: { id: string; title: string; body: string; time: number; url: string; delivery: string }[];

@@ -1,14 +1,87 @@
 from datetime import datetime
 
+from cryptography.fernet import Fernet
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 from goldsignal import alerts, config, news, store, worker
 from goldsignal.api import app
+from goldsignal.access import password_hash
 from goldsignal.lifecycle import advance
 from goldsignal.market import REPLAY_START, Replay, demo_profile, demo_spec
-from goldsignal.strategy import account_fit, gate, levels, setup
+from goldsignal.strategy import account_fit, compare_pattern, gate, levels, setup
+
+
+def test_access_and_gemini_storage(db, monkeypatch):
+    password = "fixture-admin-password"
+    salt = "00112233445566778899aabbccddeeff"
+    monkeypatch.setenv("ADMIN_EMAIL", "fixture@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", f"{salt}:{password_hash(password, salt)}")
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
+    with TestClient(app) as operator, TestClient(app) as viewer:
+        assert viewer.get("/api/dashboard").status_code == 401
+        assert viewer.get("/api/admin/settings").status_code == 403
+        login = operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
+        assert login.status_code == 200 and "HttpOnly" in login.headers["set-cookie"]
+        secret = operator.post("/api/admin/keys", json={"label": "Fixture viewer"}).json()["key"]
+        assert viewer.post("/api/auth/viewer", json={"credential": secret}).status_code == 200
+        assert viewer.get("/api/dashboard?frame=M1").json()["frame"] == "M1"
+        assert viewer.put("/api/admin/gemini", json={"enabled": True}).status_code == 403
+        provider_key = "fixture-provider-key"
+        assert operator.put("/api/admin/gemini", json={"api_key": provider_key, "enabled": True}).status_code == 200
+        settings = operator.get("/api/admin/settings")
+        assert settings.json()["enabled"] and secret not in settings.text and provider_key not in settings.text
+        with store.transaction() as data:
+            assert provider_key not in str(data.get("ai", "gemini"))
+        assert operator.delete("/api/admin/keys", params={"id": settings.json()["keys"][0]["id"]}).status_code == 200
+        assert viewer.get("/api/dashboard").status_code == 401
+        assert operator.delete("/api/auth/session").status_code == 200
+        assert operator.get("/api/admin/settings").status_code == 403
+
+
+def test_pattern_rsi8_uses_actual_sample():
+    bars = [dict(time=i * 900, open=3700 + i, high=3702 + i, low=3699 + i, close=3701 + i)
+            for i in range(1100)]
+    pattern = compare_pattern(bars, 1)
+    assert pattern["history"] == 1000 and pattern["rsi8"] == 100
+    assert pattern["matches"] == 5 and pattern["next4_bps"] > 0
+
+
+def test_gemini_caps_and_invalid_review_hold(db, monkeypatch):
+    key = Fernet.generate_key()
+    cipher = Fernet(key)
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", key.decode())
+    calls = []
+
+    class Reply:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": '{"decision":"BUY","reason":"invalid"}'}]}}]}
+
+    def post(url, **kwargs):
+        calls.append(kwargs["json"])
+        assert "generativelanguage.googleapis.com" in url
+        assert kwargs["json"]["generationConfig"]["maxOutputTokens"] == 96
+        assert kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 0
+        assert len(kwargs["json"]["contents"][0]["parts"][0]["text"]) < 650
+        return Reply()
+
+    monkeypatch.setattr(worker.httpx, "post", post)
+    config_row = {"enabled": True, "ciphertext": cipher.encrypt(b"fixture-provider-key").decode()}
+    with store.transaction() as data:
+        data.put("ai", "gemini", config_row)
+    tick(0)
+    tick(1)
+    with store.transaction() as data:
+        assert len(calls) == 1 and not data.all("signal")
+        assert data.all("candidate")[0]["reason"] == "Gemini review unavailable"
+    s = sample()
+    for _ in range(6):
+        worker.gemini_review(config_row, worker.new_candidate(s), s, {})
+    assert len(calls) == 6
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -11,6 +12,7 @@ import httpx
 from filelock import FileLock
 
 from . import news
+from .access import MODEL, encryption
 from .alerts import add_alert, send_pending
 from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
 from .lifecycle import advance, realized
@@ -54,6 +56,52 @@ def model_review(candidate, snapshot, calendar):
     except Exception as exc:
         log.warning("Local model review failed: %s", exc)
         return "WAIT", "Local model review unavailable"
+
+
+def gemini_review(settings, candidate, snapshot, calendar):
+    day = datetime.now(timezone.utc).date().isoformat()
+    with transaction() as store:
+        usage = store.get("ai_usage", "gemini", {})
+        used = usage.get("count", 0) if usage.get("day") == day else 0
+        if used >= 6:
+            return "WAIT", "Gemini daily review limit reached"
+        store.put("ai_usage", "gemini", {"day": day, "count": used + 1})
+    try:
+        key = encryption().decrypt(settings["ciphertext"].encode()).decode()
+        setup_data = candidate["evidence"]
+        candle = setup_data["candle"]
+        evidence = {
+            "side": candidate["direction"], "ref": candidate["reference"],
+            "entry": candidate["entry"], "stop": candidate["initial_stop"], "targets": candidate["targets"],
+            "swing": setup_data["swing"]["low" if candidate["direction"] == "BUY" else "high"],
+            "body": round(candle["close"] - candle["open"], 2),
+            "trend_delta": [round(series[-1] - series[0], 2) for series in setup_data["trend_closes"].values()],
+            "pattern": setup_data["pattern"],
+            "spread": round(snapshot["quote"]["ask"] - snapshot["quote"]["bid"], 2),
+        }
+        response = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
+            headers={"x-goog-api-key": key}, timeout=8,
+            json={"contents": [{"parts": [{"text": (
+                'Review one XAUUSD entry. Keep supplied side and levels. Trends M15/M30/H1. '
+                'Next4 is historical return in side direction (bps), not a forecast. '
+                'CONFIRM coherent evidence, WAIT uncertainty, REJECT contradiction. Reason max 12 words. '
+                + json.dumps(evidence, separators=(",", ":"))
+            )}]}], "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": 96,
+                                        "responseSchema": {"type": "OBJECT", "required": ["decision", "reason"],
+                                            "properties": {"decision": {"type": "STRING", "enum": ["CONFIRM", "WAIT", "REJECT"]},
+                                                           "reason": {"type": "STRING"}}},
+                                        "thinkingConfig": {"thinkingBudget": 0}}},
+        )
+        response.raise_for_status()
+        result = json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+        reason = result["reason"]
+        if result["decision"] not in ("CONFIRM", "WAIT", "REJECT") or not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Invalid Gemini decision")
+        return result["decision"], " ".join(reason.split()[:12])[:160]
+    except Exception as exc:
+        log.warning("Gemini review unavailable (%s)", type(exc).__name__)
+        return "WAIT", "Gemini review unavailable"
 
 
 def new_candidate(snapshot):
@@ -119,22 +167,31 @@ def process(source, step, cursor, calendar, revision):
         calendar = news.refresh(True, now, calendar)
     candidate = new_candidate(snapshot)
     model = None
-    if candidate and REVIEW != "rules":
+    configured = False
+    review_provider = "rules"
+    if candidate:
         with transaction() as store:
-            published = store.get("signal", candidate["id"])
-            prior = store.get("candidate", candidate["id"])
-        model = prior.get("model") if prior else None
-        if not published and not model and gate(candidate, snapshot["quote"], now)[0] == "CONFIRM":
-            model = model_review(candidate, snapshot, calendar)
-            if not DEMO:
-                snapshot = source.read(cursor, step, utc_now())
+            gemini = store.get("ai", "gemini", {})
+            configured = gemini.get("enabled")
+            published = store.get("signal", candidate["id"]) if configured or REVIEW != "rules" else None
+            prior = store.get("candidate", candidate["id"]) if configured or REVIEW != "rules" else None
+        if configured or REVIEW != "rules":
+            review_provider = "gemini" if configured else REVIEW
+            model = prior.get("model") if prior and prior.get("review_provider", REVIEW) == review_provider else None
+            pause = news.restriction(calendar, now, DEMO) if configured else None
+            if not published and not model and gate(candidate, snapshot["quote"], now, pause)[0] == "CONFIRM":
+                model = (gemini_review(gemini, candidate, snapshot, calendar) if configured
+                         else model_review(candidate, snapshot, calendar))
+                if not DEMO:
+                    snapshot = source.read(cursor, step, utc_now())
+    review_gate = model or (("WAIT", "Waiting for Gemini review") if configured else None)
     with transaction() as store:
         track(store, "signal", snapshot, calendar)
         track(store, "shadow", snapshot, calendar)
         now = snapshot["now"] if DEMO else utc_now()
         quote = snapshot["quote"]
         if candidate and not store.get("signal", candidate["id"]):
-            decision, reason = evaluate(candidate, quote, now, calendar, model)
+            decision, reason = evaluate(candidate, quote, now, calendar, review_gate)
             baseline, baseline_reason = gate(candidate, quote, now)
             key = candidate["id"]
             evidence = store.get("candidate", key, {})
@@ -142,7 +199,8 @@ def process(source, step, cursor, calendar, revision):
             store.put("candidate", key, {**candidate, "first": first, "evaluated": now, "decision": decision,
                                         "reason": reason, "quote": quote, "calendar_sources": calendar.get("sources", {}),
                                         "calendar_reason": news.restriction(calendar, now, DEMO),
-                                        "baseline": baseline, "baseline_reason": baseline_reason, "model": model})
+                                        "baseline": baseline, "baseline_reason": baseline_reason, "model": model,
+                                        "review_provider": review_provider})
             if baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(candidate, exits=[], created=now))
             if decision == "CONFIRM":
@@ -159,11 +217,15 @@ def process(source, step, cursor, calendar, revision):
                         eligible[profile_id] = dict(fit=fit, step=snapshot["spec"]["step"], policy=profile["exit_policy"],
                                                     units=profile["units_per_currency"])
                 now = snapshot["now"] if DEMO else utc_now()
-                if evaluate(candidate, quote, now, calendar, model)[0] == "CONFIRM":
+                if evaluate(candidate, quote, now, calendar, review_gate)[0] == "CONFIRM":
                     candidate.update(created=now, eligible=eligible)
+                    if model:
+                        candidate["review"] = {"provider": review_provider, "reason": model[1]}
                     store.put("signal", key, candidate)
                     record_event(store, candidate, "ENTRY", now)
         store.save_bars(snapshot["bars"], revision)
+        for frame, bars in snapshot.get("frames", {}).items():
+            store.save_bars(bars, revision, frame)
         store.put("state", "market", dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, error=None))
@@ -206,7 +268,7 @@ def run():
                         track(store, "signal", unavailable, calendar)
                         track(store, "shadow", unavailable, calendar)
                     store.put("state", "market", {**prior, "heartbeat": clock, "error": "Market worker cycle failed"})
-            time.sleep(max(0.1, (float(os.getenv("REPLAY_STEP_SECONDS", "5")) if DEMO else 2) -
+            time.sleep(max(0.1, (float(os.getenv("REPLAY_STEP_SECONDS", "5")) if DEMO else 1) -
                            (time.monotonic() - cycle)))
 
 

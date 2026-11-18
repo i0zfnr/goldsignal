@@ -11,6 +11,11 @@ const publicKey = createPublicKey({
 });
 const pending = new Map();
 const nonces = new Map();
+const routes = new Set([
+  "GET /api/dashboard", "PUT /api/profile", "PUT /api/push", "DELETE /api/push",
+  "GET /api/auth/session", "DELETE /api/auth/session", "POST /api/auth/admin", "POST /api/auth/viewer",
+  "GET /api/admin/settings", "POST /api/admin/keys", "DELETE /api/admin/keys", "PUT /api/admin/gemini",
+]);
 const mime = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".woff": "font/woff",
@@ -59,7 +64,7 @@ async function poll(req, res) {
     pending.delete(result.id);
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("Content-Type", "application/json");
-    if (typeof result.cookie === "string" && result.cookie.startsWith("goldsignal_viewer=")) {
+    if (typeof result.cookie === "string" && /^goldsignal_(viewer|session)=/.test(result.cookie)) {
       response.setHeader("Set-Cookie", /;\s*secure(?:;|$)/i.test(result.cookie) ? result.cookie : `${result.cookie}; Secure`);
     }
     response.writeHead(result.status).end(result.body);
@@ -75,7 +80,7 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     if (req.method === "POST" && url.pathname === "/_relay/poll") return await poll(req, res);
     const route = `${req.method} ${url.pathname}`;
-    if (["GET /api/dashboard", "PUT /api/profile", "PUT /api/push", "DELETE /api/push"].includes(route)) {
+    if (routes.has(route)) {
       if (pending.size >= 32) return json(res, 503, { detail: "Live feed busy" });
       const body = await readBody(req, 8192);
       const id = randomUUID();
@@ -87,7 +92,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 404, { detail: "Not found" });
-    const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+    const pathname = ["/", "/admin"].includes(url.pathname) ? "/index.html" : url.pathname;
     if (!["/index.html", "/sw.js", "/NOTICE"].includes(pathname) && !/^\/assets\/[\w.-]+$/.test(pathname)) {
       return json(res, 404, { detail: "Not found" });
     }

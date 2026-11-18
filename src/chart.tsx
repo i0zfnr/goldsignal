@@ -3,19 +3,22 @@ import {
   CandlestickSeries, ColorType, createChart, LineStyle,
   type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp,
 } from "lightweight-charts";
-import type { Candle, Signal } from "./types";
+import type { Candle, Frame, Signal } from "./types";
 
 type ChartState = {
   chart: IChartApi; series: ISeriesApi<"Candlestick">; lines: IPriceLine[];
   data: Map<number, Candle>; last?: UTCTimestamp;
 };
 
-export function Chart({ candles, signal }: { candles: Candle[]; signal: Signal | null }) {
+export function Chart({ candles, signal, frame, quote }: {
+  candles: Candle[]; signal: Signal | null; frame: Frame; quote: { bid: number; ask: number } | null;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const shade = useRef<HTMLDivElement>(null);
   const state = useRef<ChartState | null>(null);
   const zone = useRef<[number, number] | null>(null);
   const scaleRange = useRef<number[]>([]);
+  const liveLines = useRef<IPriceLine[]>([]);
   useEffect(() => {
     const chart = createChart(host.current!, {
       autoSize: true,
@@ -65,7 +68,7 @@ export function Chart({ candles, signal }: { candles: Candle[]; signal: Signal |
       animation = requestAnimationFrame(positionBand);
     }
     animation = requestAnimationFrame(positionBand);
-    return () => { cancelAnimationFrame(animation); chart.remove(); state.current = null; };
+    return () => { cancelAnimationFrame(animation); chart.remove(); state.current = null; liveLines.current = []; };
   }, []);
 
   useEffect(() => {
@@ -119,8 +122,27 @@ export function Chart({ candles, signal }: { candles: Candle[]; signal: Signal |
       }));
     }
   }, [entryLow, entryHigh, stop, target1, target2, target3]);
+  const bid = quote?.bid, ask = quote?.ask;
+  useEffect(() => {
+    const series = state.current?.series;
+    if (!series) return;
+    if (bid === undefined || ask === undefined) {
+      liveLines.current.forEach(line => series.removePriceLine(line));
+      liveLines.current = [];
+      return;
+    }
+    if (liveLines.current.length) {
+      liveLines.current[0].applyOptions({ price: bid });
+      liveLines.current[1].applyOptions({ price: ask });
+      return;
+    }
+    liveLines.current = [
+      series.createPriceLine({ price: bid, title: "Bid", color: "#83d5ba", lineWidth: 1, axisLabelTextColor: "#121412" }),
+      series.createPriceLine({ price: ask, title: "Ask", color: "#a8bdf3", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelTextColor: "#121412" }),
+    ];
+  }, [bid, ask]);
   return <div className="chart-shell">
-    <div ref={host} className="chart" role="img" aria-label="XAUUSD M15 candlestick chart. Exact signal levels are listed below." />
+    <div ref={host} className="chart" role="img" aria-label={`XAUUSD ${frame} candlestick chart. Exact signal levels are listed below.`} />
     <div ref={shade} className="entry-shade" hidden aria-hidden="true" />
   </div>;
 }
