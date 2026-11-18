@@ -52,19 +52,25 @@ def aggregate(bars, period):
     ]
 
 
-def setup(bars, now):
+def setup(bars, now, scan=None):
+    scan = {} if scan is None else scan
     closed = [bar for bar in bars if bar["time"] + 900 <= now]
     if len(closed) < max(4 * TREND, 2 * SWING + 2):
+        scan["reason"] = "Waiting for enough closed candles."
         return None
     candle = closed[-1]
+    scan["closed_at"] = candle["time"] + 900
     trends = {}
     for period in (900, 1800, 3600):
         series = aggregate(closed, period)[-TREND:]
         if len(series) != TREND or series[-1][0] + period != (candle["time"] + 900) // period * period:
+            scan["reason"] = f"Waiting for complete {'H1' if period == 3600 else f'M{period // 60}'} candle history."
             return None
         if any(b[0] - a[0] != period for a, b in zip(series, series[1:])):
+            scan["reason"] = f"Recent candle history has gaps in {'H1' if period == 3600 else f'M{period // 60}'}."
             return None
         trends[str(period // 60)] = [price for _, price in series]
+    scan["reason"] = "M15, M30 and H1 trends disagree or are flat."
     for direction, field, sign in (("BUY", "low", 1), ("SELL", "high", -1)):
         if not all(sign * (prices[-1] - prices[0]) > 0 and
                    sign * (prices[-1] - sum(prices) / len(prices)) > 0 for prices in trends.values()):
@@ -72,14 +78,17 @@ def setup(bars, now):
         wick = min(candle["open"], candle["close"]) - candle["low"] if sign == 1 else (
             candle["high"] - max(candle["open"], candle["close"])
         )
+        scan["reason"] = f"Trends agree for {direction}, but the last M15 candle did not confirm a rejection."
         if sign * (candle["close"] - candle["open"]) <= 0 or wick < abs(candle["close"] - candle["open"]):
             continue
+        scan["reason"] = "Rejection candle did not match a confirmed swing zone."
         for i in range(len(closed) - SWING - 2, max(SWING - 1, len(closed) - 49), -1):
             level = closed[i][field]
             neighbors = closed[i - SWING:i] + closed[i + 1:i + SWING + 1]
             if not all(sign * (b[field] - level) > 0 for b in neighbors):
                 continue
             if abs(candle[field] - level) <= ZONE_WIDTH and sign * (candle["close"] - level) > ZONE_WIDTH:
+                scan["reason"] = f"{direction} setup found. Checking entry conditions."
                 return {
                     "direction": direction, "candle": candle, "swing": closed[i],
                     "swing_confirmed": closed[i + SWING]["time"] + 900, "trend_closes": trends,

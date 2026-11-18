@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from goldsignal import alerts, config, news, store, worker
+from goldsignal import alerts, chat, config, news, store, worker
 from goldsignal.api import app
 from goldsignal.access import password_hash
 from goldsignal.lifecycle import advance
@@ -32,6 +32,15 @@ def test_access_and_gemini_storage(db, monkeypatch):
         assert operator.put("/api/admin/gemini", json={"api_key": provider_key, "enabled": True}).status_code == 200
         settings = operator.get("/api/admin/settings")
         assert settings.json()["enabled"] and secret not in settings.text and provider_key not in settings.text
+        monkeypatch.setattr(chat, "ask", lambda key, turns: {"text": "Fixture response"}
+                            if key == provider_key and turns[-1].text == "Explain the setup." else {"error": "Unexpected request"})
+        prompt = {"turns": [{"role": "user", "text": "Explain the setup."}]}
+        assert viewer.post("/api/admin/chat", json=prompt).status_code == 403
+        job = operator.post("/api/admin/chat", json=prompt)
+        assert job.status_code == 202
+        assert operator.get("/api/admin/chat", params=job.json()).json() == {"text": "Fixture response"}
+        with store.transaction() as data:
+            assert data.get("ai_usage", "gemini") is None
         with store.transaction() as data:
             assert provider_key not in str(data.get("ai", "gemini"))
         assert operator.delete("/api/admin/keys", params={"id": settings.json()["keys"][0]["id"]}).status_code == 200
@@ -264,6 +273,7 @@ def test_end_to_end_and_duplicate_events(db, monkeypatch):
         state = client.get("/api/dashboard").json()
         assert state["status"] == "DEMO" and len(state["candles"]) == 250
         assert state["candidate"]["decision"] == "CONFIRM" and state["active"]["status"] == "PENDING"
+        assert state["scan"]["closed_at"] == REPLAY_START
         assert "fit" not in state and "profile" not in state
         assert [item["kind"] for item in state["alerts"]] == ["ENTRY"]
         for step in range(1, 9):

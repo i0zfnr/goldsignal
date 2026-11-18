@@ -67,6 +67,68 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
   </>;
 }
 
+type ChatTurn = { role: "user" | "model"; text: string };
+
+function AdminChat({ configured }: { configured: boolean }) {
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!message.trim() || busy) return;
+    const user: ChatTurn = { role: "user", text: message.trim() };
+    const context = [...turns.slice(-38), user];
+    const size = () => new TextEncoder().encode(JSON.stringify({ turns: context })).length;
+    while (context.length > 1 && size() > 7800) context.splice(0, 2);
+    if (!context.length || size() > 7800) {
+      setError("This message is too large. Send it in smaller parts.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setTurns([...turns, user]);
+    setMessage("");
+    try {
+      const { id } = await send<{ id: string }>("/api/admin/chat", "POST", { turns: context });
+      for (let attempt = 0; attempt < 45; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        const result = await api<{ text?: string; error?: string }>(`/api/admin/chat?id=${encodeURIComponent(id)}`);
+        if (result.error) throw new Error(result.error);
+        if (result.text) {
+          setTurns([...turns, user, { role: "model", text: result.text }]);
+          return;
+        }
+      }
+      throw new Error("Gemini took too long to respond.");
+    } catch (failure) {
+      setTurns(turns);
+      setMessage(user.text);
+      setError((failure as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <section className="panel access-panel admin-chat" aria-labelledby="gemini-chat-title">
+    <h3 id="gemini-chat-title">Gemini chat</h3>
+    {configured ? <>
+      <div className="chat-turns" role="log" aria-label="Conversation">
+        {turns.map((turn, index) => <article key={index}>
+          <strong>{turn.role === "user" ? "You" : "Gemini"}</strong>
+          <p>{turn.text}</p>
+        </article>)}
+      </div>
+      <form className="access-form" onSubmit={submit}>
+        <label>Message<textarea value={message} onChange={event => setMessage(event.target.value)} rows={3} required disabled={busy} /></label>
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Gemini…" : "Send message"}</button>
+      </form>
+      {error && <p className="warn" role="alert">{error}</p>}
+    </> : <p className="muted">Save your API key in Gemini review to start chatting.</p>}
+  </section>;
+}
+
 function AdminSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newKey, setNewKey] = useState("");
@@ -114,7 +176,7 @@ function AdminSettings() {
       <h2 id="admin-settings-title">Admin settings</h2>
       {error && <p className="warn" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
-      {settings ? <div className="admin-grid">
+      {settings ? <><div className="admin-grid">
         <section className="panel access-panel">
           <div className="panel-heading"><h3>Viewer access</h3><span className="muted">{settings.keys.filter(key => !key.revoked).length} active</span></div>
           <form className="access-form" onSubmit={create}>
@@ -148,7 +210,7 @@ function AdminSettings() {
             <button className="primary" disabled={busy}>Save Gemini settings</button>
           </form>
         </section>
-      </div> : !error && <p role="status">Loading settings…</p>}
+      </div><AdminChat configured={settings.configured} /></> : !error && <p role="status">Loading settings…</p>}
     </section>;
 }
 

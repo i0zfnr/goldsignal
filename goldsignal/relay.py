@@ -16,7 +16,7 @@ ROUTES = {("GET", "/api/dashboard"),
           ("PUT", "/api/push"), ("DELETE", "/api/push"), ("GET", "/api/auth/session"),
           ("DELETE", "/api/auth/session"), ("POST", "/api/auth/admin"), ("POST", "/api/auth/viewer"),
           ("GET", "/api/admin/settings"), ("POST", "/api/admin/keys"), ("DELETE", "/api/admin/keys"),
-          ("PUT", "/api/admin/gemini")}
+          ("PUT", "/api/admin/gemini"), ("GET", "/api/admin/chat"), ("POST", "/api/admin/chat")}
 
 
 def encode(data):

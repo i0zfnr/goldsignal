@@ -21,6 +21,7 @@ export type Dashboard = {
   frame: Frame;
   events: { id: string; kind: string; time: number; stop: number; note: string | null }[];
   candidate: { decision: string; reason: string; evidence: Evidence } | null;
+  scan?: { reason: string; closed_at?: number } | null;
   calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };
   alerts: { id: string; title: string; body: string; time: number; url: string; delivery: string }[];

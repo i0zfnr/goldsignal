@@ -106,9 +106,11 @@ def gemini_review(settings, candidate, snapshot, calendar):
 
 def new_candidate(snapshot):
     now, bars = snapshot["now"], snapshot["bars"]
+    scan = snapshot["scan"] = {}
     if snapshot["closed"] or not session(now)["open"]:
+        scan["reason"] = "Watching the feed. Entries are outside broker or session hours."
         return None
-    evidence = setup(bars, now)
+    evidence = setup(bars, now, scan)
     if not evidence:
         return None
     candle = evidence["candle"]
@@ -165,6 +167,7 @@ def process(source, step, cursor, calendar, revision):
     if DEMO:
         calendar = news.refresh(True, now, calendar)
     candidate = new_candidate(snapshot)
+    scan = snapshot.get("scan", {})
     model = None
     configured = False
     review_provider = "rules"
@@ -215,7 +218,7 @@ def process(source, step, cursor, calendar, revision):
             store.save_bars(bars, revision, frame)
         store.put("state", "market", dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
-                  revision=revision, heartbeat=utc_now(), calendar=calendar, error=None))
+                  revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, error=None))
     return snapshot
 
 

@@ -175,7 +175,8 @@ function App({ role, signOut, expired, settings }: {
               {signal.review?.provider === "gemini" && <p className="small"><strong>Gemini</strong> · {signal.review.reason}</p>}
               <p className="small muted">Published {displayTime(signal.created)} · Entry expiry {displayTime(signal.expiry)} MYT</p>
             </> : <p className="muted">{selected ? "Signal unavailable." : "Waiting for a confirmed setup."}</p>}
-            {data?.candidate && <p className="gate">Latest review · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
+            {data?.scan && <p className="gate">{data.scan.reason}{data.scan.closed_at && <span className="muted"> · M15 close {displayTime(data.scan.closed_at)} MYT</span>}</p>}
+            {data?.candidate && <p className="gate">Last candidate · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
             {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
           </section>
         </div>

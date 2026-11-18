@@ -15,6 +15,7 @@ from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
 from .news import restriction
 from .store import migrate, transaction
 from .access import identity, router
+from .chat import router as chat_router
 
 
 @asynccontextmanager
@@ -25,6 +26,7 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
+app.include_router(chat_router)
 COOKIE = "goldsignal_viewer"
 
 
@@ -92,6 +94,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         return dict(
             symbol=SYMBOL, mode=MODE, status=status, clock=now, quote=quote, heartbeat=state.get("heartbeat"),
             error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after, frame), frame=frame,
+            scan=state.get("scan") if status != "STALE" else None,
             session=window, active=public(selected) if selected else None,
             history=[public(item) for item in history[:15]],
             events=sorted((e for e in store.all("event") if selected and e["signal"] == selected["id"]), key=lambda e: e["time"]),

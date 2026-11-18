@@ -19,6 +19,12 @@ body { margin: 0; }
 .access-panel h1, .admin-page > h2 { margin-bottom: 12px; }
 .admin-page > h2 { font-size: 1.45rem; }
 .admin-grid h3 { margin: 0; font-size: 1rem; }
+.admin-chat { margin-top: 16px; }
+.admin-chat h3 { margin: 0 0 8px; font-size: 1rem; }
+.admin-chat textarea { width: 100%; resize: vertical; padding: 9px; font: inherit; color: inherit; background: #121512; border: 1px solid #626e5e; border-radius: 4px; }
+.chat-turns { display: grid; gap: 12px; }
+.chat-turns article { padding: 10px; border-left: 2px solid var(--line); }
+.chat-turns p { white-space: pre-wrap; }
 .access-form, .issued-key { display: grid; gap: 12px; margin-block: 16px; }
 .admin-page { padding-block: 28px; }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 16px; }
