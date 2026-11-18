@@ -25,10 +25,9 @@ function send<T>(path: string, method: string, value: unknown) {
   return api<T>(path, { method, body: JSON.stringify(value), headers: { "Content-Type": "application/json" } });
 }
 
-function AccessHeader({ children }: { children?: ReactNode }) {
+function AccessHeader() {
   return <header className="site-header"><div className="header-inner">
     <a className="wordmark" href="/"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
-    {children}
   </div></header>;
 }
 
@@ -49,7 +48,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
       setBusy(false);
     }
   }
-  return <><AccessHeader><a href={isAdmin ? "/" : "/admin"}>{isAdmin ? "User sign-in" : "Admin sign-in"}</a></AccessHeader>
+  return <><AccessHeader />
     <main className="access-page">
       <section className="panel access-panel" aria-labelledby="login-title">
         <h1 id="login-title">{isAdmin ? "Admin sign-in" : "Sign in to Goldsignal"}</h1>
