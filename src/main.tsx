@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
 import { Access, ApiError, api } from "./access";
+import { InstallButton } from "./install";
 import type { Dashboard, Frame } from "./types";
 import "@fontsource/geist/latin-400.css";
 import "@fontsource/geist/latin-600.css";
@@ -125,6 +126,7 @@ function App({ role, signOut, expired, settings }: {
     </div></header>
     <main>
       {role !== "demo" && <div className="session-actions">
+        <InstallButton />
         {role === "admin" && <a href={settings ? "#admin-settings" : "/admin"}>Admin settings</a>}
         <button type="button" onClick={() => void signOut()}>Sign out</button>
       </div>}
@@ -179,22 +181,21 @@ function App({ role, signOut, expired, settings }: {
             {data?.candidate && <p className="gate">Last candidate · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
             {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
           </section>
+          <section className="panel below" id="history" aria-labelledby="history-title">
+            <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
+            {data?.history.length ? <ul className="rows">{data.history.map(item =>
+              <li key={item.id}><div><a href={`${page}?signal=${item.id}#signal`} onClick={event => select(event, item.id)}>{item.direction} · {price(item.reference)}</a>
+                <p className="muted small">{displayTime(item.created)} MYT</p></div><span>{item.status}</span></li>)}</ul> : <p className="muted">No signals saved yet.</p>}
+            <details><summary>Lifecycle and comparison</summary>
+              {data?.events.map(event => <p className="small" key={event.id}>{displayTime(event.time)} MYT · {event.kind} · SL {price(event.stop)}{event.note ? ` · ${event.note}` : ""}</p>)}
+              {data && (["with_news", "without_news"] as const).map(key => {
+                const row = data.metrics[key];
+                return <p className="small muted" key={key}>{key === "with_news" ? "With news" : "Without news"} · {row.fills}/{row.entries} filled · {row.tp1}/{row.fills} reached TP1 · {price(row.result)} simulated P/L per lot</p>;
+              })}
+            </details>
+          </section>
+          {data && <Alerts data={data} reload={refresh} />}
         </div>
-      </div>
-      <div className="lower">
-        <section className="panel below" id="history" aria-labelledby="history-title">
-          <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
-          {data?.history.length ? <ul className="rows">{data.history.map(item =>
-            <li key={item.id}><div><a href={`${page}?signal=${item.id}#signal`} onClick={event => select(event, item.id)}>{item.direction} · {price(item.reference)}</a>
-              <p className="muted small">{displayTime(item.created)} MYT</p></div><span>{item.status}</span></li>)}</ul> : <p className="muted">No signals saved yet.</p>}
-          <details><summary>Lifecycle and comparison</summary>
-            {data?.events.map(event => <p className="small" key={event.id}>{displayTime(event.time)} MYT · {event.kind} · SL {price(event.stop)}{event.note ? ` · ${event.note}` : ""}</p>)}
-            {data && (["with_news", "without_news"] as const).map(key => {
-              const row = data.metrics[key];
-              return <p className="small muted" key={key}>{key === "with_news" ? "With news" : "Without news"} · {row.fills}/{row.entries} filled · {row.tp1}/{row.fills} reached TP1 · {price(row.result)} simulated P/L per lot</p>;
-            })}
-          </details>
-        </section>
         <section className="panel below" id="news" aria-labelledby="news-title">
           <div className="panel-heading"><h2 id="news-title">USD calendar</h2><span className="muted small">{data?.mode === "demo" ? "Mock feed" : "Official sources"}</span></div>
           {data?.calendar.restriction && <p className="warn">{data.calendar.restriction}</p>}
@@ -210,12 +211,15 @@ function App({ role, signOut, expired, settings }: {
               {item.url ? <a href={item.url}>{item.title}</a> : item.title} · {displayTime(item.time)} MYT</p>)}
           </details>
         </section>
-        {data && <Alerts data={data} reload={refresh} />}
       </div>
       {settings}
     </main>
     <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a></footer>
   </>;
+}
+
+if ("serviceWorker" in navigator) {
+  void navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
 createRoot(document.getElementById("root")!).render(<Access

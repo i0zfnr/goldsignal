@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { InstallButton } from "./install";
 
 type Role = "admin" | "viewer" | "demo" | null;
 type Settings = {
@@ -28,6 +29,7 @@ function send<T>(path: string, method: string, value: unknown) {
 function AccessHeader() {
   return <header className="site-header"><div className="header-inner">
     <a className="wordmark" href="/"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+    <InstallButton />
   </div></header>;
 }
 

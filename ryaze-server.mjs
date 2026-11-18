@@ -20,6 +20,7 @@ const routes = new Set([
 const mime = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".woff": "font/woff",
+  ".webmanifest": "application/manifest+json", ".png": "image/png",
 };
 
 function json(res, status, value) {
@@ -94,7 +95,8 @@ const server = createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 404, { detail: "Not found" });
     const pathname = ["/", "/admin"].includes(url.pathname) ? "/index.html" : url.pathname;
-    if (!["/index.html", "/sw.js", "/NOTICE"].includes(pathname) && !/^\/assets\/[\w.-]+$/.test(pathname)) {
+    if (!["/index.html", "/sw.js", "/NOTICE", "/offline.html", "/manifest.webmanifest",
+      "/app-icon-192.png", "/app-icon-512.png"].includes(pathname) && !/^\/assets\/[\w.-]+$/.test(pathname)) {
       return json(res, 404, { detail: "Not found" });
     }
     const path = resolve("dist", `.${pathname}`);
