@@ -24,7 +24,7 @@ export type Dashboard = {
   revision: number; candles: Candle[]; active: Signal | null; history: Signal[];
   frame: Frame;
   events: { id: string; kind: string; time: number; stop: number; note: string | null }[];
-  candidate: { decision: string; reason: string; evidence: Evidence } | null;
+  candidate: { decision: string; reason: string; evidence: Evidence; evaluated?: number } | null;
   entry_check?: EntryCheck | null;
   scan?: { reason: string; closed_at?: number } | null;
   scalp_scan?: string | null;

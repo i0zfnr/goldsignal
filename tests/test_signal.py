@@ -511,6 +511,28 @@ def test_rolling_entry_cap_waits_for_an_open_slot(db):
         assert len(data.all("signal")) == 3
 
 
+def test_performance_uses_closed_fills_and_myt_periods(db):
+    today = datetime(2026, 11, 19, 1, tzinfo=config.MY).timestamp()
+    with store.transaction() as data:
+        data.put("state", "market", {"now": today})
+        data.put("signal", "win", {
+            "created": today - 7200, "status": "STOPPED", "direction": "BUY", "fill": 100,
+            "exits": [{"time": today - 90, "price": 103, "fraction": 0.5},
+                      {"time": today - 60, "price": 99, "fraction": 0.5}],
+        })
+        data.put("signal", "loss", {
+            "created": today - 86400, "status": "STOPPED", "direction": "SELL", "fill": 100,
+            "exits": [{"time": today - 86300, "price": 102, "fraction": 1}],
+        })
+        data.put("signal", "open", {"created": today, "status": "PENDING", "fill": None})
+    with TestClient(app) as client:
+        day = client.get("/api/performance?period=day").json()
+        assert day == {"signals": 1, "wins": 1, "losses": 0, "flat": 0, "pips": 10.0,
+                       "buckets": [{"label": "2026-11-19", "wins": 1, "losses": 0, "flat": 0, "pips": 10.0}]}
+        week = client.get("/api/performance?period=week").json()
+        assert (week["signals"], week["wins"], week["losses"], week["pips"]) == (3, 1, 1, -10)
+
+
 def test_news_counterfactual(db):
     for step in range(24, 33):
         tick(step)

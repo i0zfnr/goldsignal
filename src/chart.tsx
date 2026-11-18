@@ -9,6 +9,10 @@ type ChartState = {
   chart: IChartApi; series: ISeriesApi<"Candlestick">; lines: IPriceLine[];
   data: Map<number, Candle>; last?: UTCTimestamp;
 };
+function chartColor(token: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+}
+
 const frameSeconds: Record<Frame, number> = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400 };
 
 export function Chart({ candles, signal, frame, quote }: {
@@ -26,16 +30,16 @@ export function Chart({ candles, signal, frame, quote }: {
   useEffect(() => {
     const chart = createChart(host.current!, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: "#171a17" }, textColor: "#bdc4b9",
+      layout: { background: { type: ColorType.Solid, color: chartColor("--panel") }, textColor: chartColor("--muted"),
         attributionLogo: true, fontFamily: "Segoe UI, sans-serif", fontSize: 12 },
-      grid: { vertLines: { color: "#282d27" }, horzLines: { color: "#282d27" } },
-      rightPriceScale: { borderColor: "#3a4238" },
-      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#3a4238", rightOffset: 5 },
+      grid: { vertLines: { color: chartColor("--grid") }, horzLines: { color: chartColor("--grid") } },
+      rightPriceScale: { borderColor: chartColor("--line") },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: chartColor("--line"), rightOffset: 5 },
       handleScroll: { vertTouchDrag: false },
     });
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#6abca4", downColor: "#ed8b7e", borderVisible: false,
-      wickUpColor: "#6abca4", wickDownColor: "#ed8b7e", lastValueVisible: false, priceLineVisible: false,
+      upColor: chartColor("--buy"), downColor: chartColor("--sell"), borderVisible: false,
+      wickUpColor: chartColor("--buy"), wickDownColor: chartColor("--sell"), lastValueVisible: false, priceLineVisible: false,
       autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
         const info = original();
         if (!info || !info.priceRange || !scaleRange.current.length) return info;
@@ -157,16 +161,16 @@ export function Chart({ candles, signal, frame, quote }: {
       ? { start: filledAt, end: closedAt, fill, stop: initialStop, target: finalTarget } : null;
     zone.current = entryLow !== undefined && entryHigh !== undefined ? [entryLow, entryHigh] : null;
     const levels: [string, number | undefined, string][] = [
-      ["Entry high", entryHigh, "#e7c778"], ["Entry low", entryLow, "#e7c778"],
-      ["SL", stop, "#ed8b7e"],
-      ["TP1", stop === target1 ? undefined : target1, "#6abca4"],
-      ["TP2", target2, "#6abca4"], ["TP3", target3, "#6abca4"],
+      ["Entry high", entryHigh, chartColor("--gold")], ["Entry low", entryLow, chartColor("--gold")],
+      ["SL", stop, chartColor("--sell")],
+      ["TP1", stop === target1 ? undefined : target1, chartColor("--buy")],
+      ["TP2", target2, chartColor("--buy")], ["TP3", target3, chartColor("--buy")],
     ];
     scaleRange.current = levels.flatMap(([, price]) => price === undefined ? [] : [price]);
     for (const [title, price, color] of levels) {
       if (price !== undefined) current.lines.push(current.series.createPriceLine({
         price, color, title, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
-        axisLabelTextColor: "#121412",
+        axisLabelTextColor: chartColor("--page"),
       }));
     }
   }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget]);
@@ -185,8 +189,8 @@ export function Chart({ candles, signal, frame, quote }: {
       return;
     }
     liveLines.current = [
-      series.createPriceLine({ price: bid, title: "Bid", color: "#83d5ba", lineWidth: 1, axisLabelTextColor: "#121412" }),
-      series.createPriceLine({ price: ask, title: "Ask", color: "#a8bdf3", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelTextColor: "#121412" }),
+      series.createPriceLine({ price: bid, title: "Bid", color: chartColor("--buy"), lineWidth: 1, axisLabelTextColor: chartColor("--page") }),
+      series.createPriceLine({ price: ask, title: "Ask", color: chartColor("--ask"), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelTextColor: chartColor("--page") }),
     ];
   }, [bid, ask]);
   return <div className="chart-shell">

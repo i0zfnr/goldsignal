@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Chart } from "./chart";
+import { Performance } from "./performance";
 import { Access, ApiError, api } from "./access";
 import { InstallButton } from "./install";
 import { CandleClock } from "./candle-clock";
@@ -189,14 +190,15 @@ function App({ role, signOut, expired, settings }: {
   const signal = data?.active;
   const entry = data?.entry_check;
   const session = data?.session;
-  const pattern = data?.candidate?.evidence.pattern;
+  const candidate = data?.candidate;
+  const pattern = candidate?.evidence.pattern;
   const showNotificationSetup = !!data?.push_key && "Notification" in window &&
     (matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone) &&
     Notification.permission === "default";
   return <>
     <header className="site-header"><div className="header-inner">
       <a className="wordmark" href={page} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
-      <nav aria-label="Dashboard sections"><a href="#signal">Signal</a><a href="#history">History</a><a href="#alerts">Alerts</a></nav>
+      <nav aria-label="Dashboard sections"><a href="#signal">Signal</a><a href="#performance">Performance</a><a href="#history">History</a><a href="#alerts">Alerts</a></nav>
     </div></header>
     <main>
       {role !== "demo" && <div className="session-actions">
@@ -218,31 +220,8 @@ function App({ role, signOut, expired, settings }: {
         <div><span>{data?.mode === "demo" ? "Replay clock" : "Last quote"}</span><strong>{data?.quote ? `${displayTime(data.quote.time)} MYT` : "–"}</strong></div>
       </div>
       <div className="workspace">
-        <section className="panel chart-panel" aria-labelledby="chart-title">
-          <div className="chart-header">
-            <div><h2 id="chart-title">Price chart</h2><span className="muted small">{frame} candles · UTC</span></div>
-            <div className="quote">
-              <div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div>
-              <div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div>
-              <CandleClock frame={frame} open={data?.frame === frame ? cursor.open : undefined}
-                clock={data?.clock} receivedAt={cursor.receivedAt} status={error ? "STALE" : data?.status} />
-            </div>
-          </div>
-          <div className="chart-frames" role="group" aria-label="Chart timeframe">
-            {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {
-              if (value !== frame) {
-                cursor.revision = undefined;
-                setFrame(value);
-              }
-            }}>{value}</button>)}
-          </div>
-          <Chart key={frame} frame={frame} candles={data?.frame === frame ? data.candles : []} signal={signal ?? null}
-            quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null} />
-          <div className="chart-footer"><span><i className="key entry" /> Entry zone</span><span><i className="key stop" /> Stop</span><span><i className="key target" /> Targets</span></div>
-        </section>
-        <div className="side">
           <section className="panel side-card signal" id="signal" aria-labelledby="signal-title">
-            <div className="panel-heading"><h2 id="signal-title">{selected ? "Selected signal" : "Latest signal"}</h2>
+            <div className="panel-heading"><h2 id="signal-title">{selected ? "Selected signal" : "Live signal"}</h2>
               {signal && <span className={signal.direction === "SELL" ? "warn" : "good"}>{signal.direction} · {signal.status}</span>}
             </div>
             {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to latest signal</a>}
@@ -265,11 +244,45 @@ function App({ role, signOut, expired, settings }: {
                 At alert open · {openedEntry.check.side} {price(openedEntry.check.price)} · {openedEntry.check.valid ? "Valid" : openedEntry.check.reason}
               </p>}
             </> : <p className="muted">{selected ? "Signal unavailable." : "Waiting for a confirmed setup."}</p>}
+          </section>
+        <section className="panel chart-panel" aria-labelledby="chart-title">
+          <div className="chart-header">
+            <div><h2 id="chart-title">Price chart</h2><span className="muted small">{frame} candles · UTC</span></div>
+            <div className="quote">
+              <div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div>
+              <div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div>
+              <CandleClock frame={frame} open={data?.frame === frame ? cursor.open : undefined}
+                clock={data?.clock} receivedAt={cursor.receivedAt} status={error ? "STALE" : data?.status} />
+            </div>
+          </div>
+          <div className="chart-frames" role="group" aria-label="Chart timeframe">
+            {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {
+              if (value !== frame) {
+                cursor.revision = undefined;
+                setFrame(value);
+              }
+            }}>{value}</button>)}
+          </div>
+          <Chart key={frame} frame={frame} candles={data?.frame === frame ? data.candles : []} signal={signal ?? null}
+            quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null} />
+          <div className="chart-footer"><span><i className="key entry" /> Entry zone</span><span><i className="key stop" /> Stop</span><span><i className="key target" /> Targets</span></div>
+        </section>
+          <section className="panel side-card insight" id="insight" aria-labelledby="insight-title">
+            <div className="panel-heading"><h2 id="insight-title">AI Insight</h2>
+              <span className="muted">{error || data?.status === "STALE" ? "Feed stale" : data?.status === "LIVE" ? "Live scan" : data?.status === "DEMO" ? "Replay scan" : "Scanner"}</span>
+            </div>
+            <details className="insight-details" open={matchMedia("(min-width: 850px)").matches}><summary>What the scanner is watching</summary>
             {data?.scan && <p className="gate"><strong>M15 baseline</strong> · {data.scan.reason}{data.scan.closed_at && <span className="muted"> · Closed {displayTime(data.scan.closed_at)} MYT</span>}</p>}
             {data?.scalp_scan && <p className="gate"><strong>M5 setup / M1 entry</strong> · {data.scalp_scan}</p>}
-            {data?.candidate && <p className="gate">Last candidate · <strong>{data.candidate.decision}</strong> · {data.candidate.reason}</p>}
+            {candidate && <p className="gate">Last candidate · <strong>{candidate.decision}</strong> · {candidate.reason}
+              {candidate.evaluated && <span className="muted"> · {displayTime(candidate.evaluated)} MYT</span>}</p>}
             {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
+            {!data?.scan && !data?.scalp_scan && !candidate && <p className="small muted">Waiting for a scanner update.</p>}
+            </details>
           </section>
+      </div>
+      <div className="dashboard-reports">
+        {data && <Performance revision={data.history.map(item => `${item.id}:${item.status}`).join(",")} />}
           <section className="panel below" id="history" aria-labelledby="history-title">
             <div className="panel-heading"><h2 id="history-title">Signal history</h2><span className="muted small">Simulated execution</span></div>
             {data?.history.length ? <ul className="rows">{data.history.map(item =>
@@ -283,8 +296,6 @@ function App({ role, signOut, expired, settings }: {
               })}
             </details>
           </section>
-          {data && <Alerts data={data} />}
-        </div>
         <section className="panel below" id="news" aria-labelledby="news-title">
           <div className="panel-heading"><h2 id="news-title">USD calendar</h2><span className="muted small">{data?.mode === "demo" ? "Mock feed" : "Official sources"}</span></div>
           {data?.calendar.restriction && <p className="warn">{data.calendar.restriction}</p>}
@@ -300,6 +311,7 @@ function App({ role, signOut, expired, settings }: {
               {item.url ? <a href={item.url}>{item.title}</a> : item.title} · {displayTime(item.time)} MYT</p>)}
           </details>
         </section>
+        {data && <Alerts data={data} />}
       </div>
       {settings}
     </main>

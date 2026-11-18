@@ -1,11 +1,11 @@
-const offlineCache = "goldsignal-offline-v1";
+const offlineCache = "goldsignal-offline-v2";
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(offlineCache).then(cache => cache.add("/offline.html")).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(caches.delete("goldsignal-offline-v1").then(() => self.clients.claim()));
 });
 
 self.addEventListener("fetch", event => {

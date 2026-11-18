@@ -1,6 +1,7 @@
 import os
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -12,7 +13,7 @@ from pydantic import BaseModel, Field
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
-from .config import MODE, STALE_SECONDS, SYMBOL, session, utc_now
+from .config import MODE, MY, STALE_SECONDS, SYMBOL, session, utc_now
 from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import admin, identity, router
@@ -83,6 +84,43 @@ def metrics(signals):
     return dict(entries=len(signals), fills=len(fills), tp1=sum(s["hits"] >= 1 for s in fills),
                 result=None if any(s["result_per_lot"] is None for s in fills) else
                 round(sum(s["result_per_lot"] for s in fills), 2))
+
+
+@app.get("/api/performance")
+def performance(request: Request, response: Response, period: Literal["day", "week", "month", "all"] = "day"):
+    get_id(request, response)
+    with transaction() as store:
+        clock = store.get("state", "market", {}).get("now", utc_now()) if MODE == "demo" else utc_now()
+        signals = store.all("signal")
+    today = datetime.fromtimestamp(clock, MY).date()
+    start = {"day": today, "week": today - timedelta(days=today.weekday()),
+             "month": today.replace(day=1), "all": None}[period]
+
+    def in_period(stamp):
+        day = datetime.fromtimestamp(stamp, MY).date()
+        return day <= today and (start is None or day >= start)
+
+    totals = dict(wins=0, losses=0, flat=0, pips=0.0)
+    buckets = {}
+    for signal in signals:
+        exits = signal.get("exits", [])
+        fill = signal.get("fill")
+        if fill is None or not exits or signal["status"] not in ("COMPLETED", "STOPPED", "TIMED_OUT"):
+            continue
+        closed = exits[-1]["time"]
+        if not in_period(closed):
+            continue
+        direction = 1 if signal["direction"] == "BUY" else -1
+        pips = round(sum(direction * (exit["price"] - fill) * exit["fraction"] / 0.10 for exit in exits), 2)
+        result = "wins" if pips > 0 else "losses" if pips < 0 else "flat"
+        local = datetime.fromtimestamp(closed, MY)
+        label = local.strftime("%Y-%m" if period == "all" else "%Y-%m-%d")
+        bucket = buckets.setdefault(label, dict(label=label, wins=0, losses=0, flat=0, pips=0.0))
+        for summary in (totals, bucket):
+            summary[result] += 1
+            summary["pips"] = round(summary["pips"] + pips, 2)
+    return {**totals, "signals": sum(in_period(s["created"]) for s in signals),
+            "buckets": [buckets[key] for key in sorted(buckets)]}
 
 
 def entry_snapshot(store, signal, state, wall):
