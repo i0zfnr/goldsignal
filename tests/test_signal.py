@@ -124,7 +124,8 @@ def test_sell_levels_and_closed_swing():
     ("2026-03-09T12:00:00+00:00", 20),
     ("2026-11-02T13:00:00+00:00", 21),
 ])
-def test_dst_and_boundaries(opening, myt_hour):
+def test_dst_and_boundaries(opening, myt_hour, monkeypatch):
+    monkeypatch.setattr(config, "ENTRY_SESSIONS", {"new_york"})
     now = stamp(opening)
     assert not config.session(now - 1)["open"]
     result = config.session(now)
@@ -140,6 +141,18 @@ def test_broker_overlap_and_weekend():
     monday = stamp("2026-11-23T15:00:00+00:00")
     assert not config.session(monday, "11:00-12:00")["open"]
     assert config.session(monday + 3600, "11:00-12:00")["open"]
+
+
+def test_regional_sessions_and_broker_rollover():
+    hours = "00:00-17:00,18:00-24:00"
+    first = config.session(stamp("2026-11-22T22:59:59+00:00"), hours)
+    assert not first["open"] and first["next"] == ["Sydney"]
+    asia = config.session(stamp("2026-11-23T02:00:00+00:00"), hours)
+    assert asia["active"] == ["Sydney", "Tokyo"]
+    overlap = config.session(stamp("2026-11-23T14:00:00+00:00"), hours)
+    assert overlap["active"] == ["London", "New York"]
+    assert asia["cutoff"] == overlap["cutoff"] == stamp("2026-11-23T22:00:00+00:00")
+    assert not config.session(overlap["cutoff"], hours)["open"]
 
 
 def test_broker_exception_with_early_close(monkeypatch):

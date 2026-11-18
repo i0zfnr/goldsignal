@@ -199,8 +199,8 @@ function App({ role, signOut, expired, settings }: {
       </div>
       {error && <p className="connection" role="status">{error}</p>}
       <div className="session-strip">
-        <div><span>US entries</span><strong>{session ? session.open ? "Window open" : "Window closed" : "Waiting for worker"}</strong></div>
-        <div><span>{session?.open ? "Cutoff" : "Next opening"}</span><strong>{session?.next_myt ? `${displayTime(session.open ? session.cutoff : session.opening)} MYT` : "–"}</strong></div>
+        <div><span>Active sessions</span><strong>{session ? session.open ? session.active?.join(" + ") || "Open" : "Closed" : "Waiting for worker"}</strong></div>
+        <div><span>{session?.open ? "Entry cutoff" : session?.next?.length ? `Next · ${session.next.join(" + ")}` : "Next opening"}</span><strong>{session?.next_myt ? `${displayTime(session.open ? session.cutoff : session.opening)} MYT` : "–"}</strong></div>
         <div><span>{data?.mode === "demo" ? "Replay clock" : "Last quote"}</span><strong>{data?.quote ? `${displayTime(data.quote.time)} MYT` : "–"}</strong></div>
       </div>
       <div className="workspace">

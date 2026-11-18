@@ -24,7 +24,7 @@ type News = { title: string; time: number; source: string; url: string | null; f
 export type Dashboard = {
   symbol: string; mode: string; status: string; clock: number; heartbeat: number | null;
   quote: { bid: number; ask: number; time: number } | null;
-  session: { open: boolean; opening: number; cutoff: number; next_myt: string | null };
+  session: { open: boolean; opening: number; cutoff: number; next_myt: string | null; active: string[]; next: string[] };
   revision: number; candles: Candle[]; active: Signal | null; history: Signal[];
   frame: Frame;
   events: { id: string; kind: string; time: number; stop: number; note: string | null }[];

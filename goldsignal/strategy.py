@@ -108,7 +108,7 @@ def executable(signal, quote, exit_side=False):
 
 def gate(signal, quote, now, news_reason=None):
     if now >= signal["expiry"] or not session(now)["open"]:
-        return "REJECT", "US entry window or candidate expired"
+        return "REJECT", "Entry session or candidate expired"
     if not quote or not quote["available"] or not -2 <= now - quote["time"] <= STALE_SECONDS:
         return "WAIT", "Broker quote unavailable or stale"
     if quote.get("permission") not in (None, "BOTH", signal["direction"]):

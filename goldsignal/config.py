@@ -14,6 +14,13 @@ SYMBOL = os.getenv("BROKER_SYMBOL", "XAUUSD")
 DB = os.getenv("DATABASE_URL", "sqlite:///goldsignal.sqlite3")
 ENTRY_START = time.fromisoformat(os.getenv("ENTRY_START", "08:00"))
 ENTRY_END = time.fromisoformat(os.getenv("ENTRY_END", "17:00"))
+ENTRY_SESSIONS = frozenset(os.getenv("ENTRY_SESSIONS", "sydney,tokyo,london,new_york").split(","))
+MARKET_SESSIONS = (
+    ("sydney", "Sydney", ZoneInfo("Australia/Sydney"), time(8), time(17)),
+    ("tokyo", "Tokyo", ZoneInfo("Asia/Tokyo"), time(9), time(18)),
+    ("london", "London", ZoneInfo("Europe/London"), time(8), time(17)),
+    ("new_york", "New York", NY, ENTRY_START, ENTRY_END),
+)
 BROKER_HOURS = os.getenv("BROKER_HOURS", "")
 BROKER_HOLIDAYS = set(filter(None, os.getenv("BROKER_CLOSED_DATES", "").split(",")))
 BROKER_DATE_HOURS = json.loads(os.getenv("BROKER_DATE_HOURS") or "{}")
@@ -56,21 +63,41 @@ def broker_windows(day, hours):
 
 
 def session(ts, broker_hours=None):
-    now = datetime.fromtimestamp(ts, NY)
     hours = broker_hours if broker_hours is not None else ("" if MODE == "demo" else BROKER_HOURS)
-    for days in range(8):
-        day = now.date() + timedelta(days=days)
-        if day.weekday() >= 5:
+    market = []
+    for key, name, zone, opening, closing in MARKET_SESSIONS:
+        if key not in ENTRY_SESSIONS:
             continue
+        today = datetime.fromtimestamp(ts, zone).date()
+        for offset in range(-1, 8):
+            day = today + timedelta(days=offset)
+            if day.weekday() < 5:
+                market.append((int(datetime.combine(day, opening, zone).timestamp()),
+                               int(datetime.combine(day, closing, zone).timestamp()), name))
+    today = datetime.fromtimestamp(ts, NY).date()
+    eligible = []
+    for offset in range(-1, 8):
+        day = today + timedelta(days=offset)
         for opening, closing in broker_windows(day, hours):
-            start = datetime.combine(day, max(ENTRY_START, opening), NY)
-            end = datetime.combine(day, min(ENTRY_END, closing), NY)
-            if start >= end or now >= end:
-                continue
-            return {
-                "open": start <= now < end,
-                "opening": int(start.timestamp()),
-                "cutoff": int(end.timestamp()),
-                "next_myt": start.astimezone(MY).isoformat(),
-            }
-    return {"open": False, "opening": None, "cutoff": None, "next_myt": None}
+            broker_start = int(datetime.combine(day, opening, NY).timestamp())
+            end = datetime.combine(day, closing, NY)
+            broker_end = int((end + timedelta(microseconds=1) if closing == time.max else end).timestamp())
+            eligible.extend((max(start, broker_start), min(finish, broker_end))
+                            for start, finish, _ in market
+                            if max(start, broker_start) < min(finish, broker_end))
+    windows = []
+    for start, end in sorted(eligible):
+        if windows and start <= windows[-1][1]:
+            windows[-1] = (windows[-1][0], max(windows[-1][1], end))
+        else:
+            windows.append((start, end))
+    window = next(((start, end) for start, end in windows if ts < end), None)
+    if window is None:
+        return {"open": False, "opening": None, "cutoff": None, "next_myt": None, "active": [], "next": []}
+    start, end = window
+    opened = start <= ts < end
+    names = [name for key, name, *_ in MARKET_SESSIONS
+             if any(label == name and a <= (ts if opened else start) < b for a, b, label in market)]
+    return {"open": opened, "opening": start, "cutoff": end,
+            "next_myt": datetime.fromtimestamp(start, MY).isoformat(),
+            "active": names if opened else [], "next": [] if opened else names}
