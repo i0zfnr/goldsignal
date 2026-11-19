@@ -31,5 +31,6 @@ def test_worker_cycle_records_every_lane(db):
     assert recorded["kuro"]["status"] == "idle"
     assert recorded["lanes"]["A"]["stages"]["kaze"]["status"] in ("setup", "waiting")
     assert recorded["lanes"]["B"]["stages"]["kaze"]["status"] in ("setup", "waiting")
-    for stage in ("kaze", "mizu", "nanao", "hikari"):
-        assert recorded["lanes"]["C"]["stages"][stage]["status"] == "disabled"
+    assert recorded["lanes"]["C"]["stages"]["kaze"]["status"] in ("setup", "waiting")
+    for stage in ("mizu", "nanao", "hikari"):
+        assert recorded["lanes"]["C"]["stages"][stage]["status"] in ("waiting", "setup", "published", "disabled")

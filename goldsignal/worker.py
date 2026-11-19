@@ -267,14 +267,13 @@ def process(source, step, cursor, calendar, revision):
         mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
                          reason=scalp_scan, at=now)
 
-        # Strategy C: Asian Range Fade (reserved / shadow)
+        # Strategy C: Asian Range Fade
         range_cand = None
-        range_scan = "Reserved"
+        range_scan = "Waiting for Asian session window."
         if "M5" in frames and "M1" in frames:
             range_cand, range_scan = asian_range_candidate(snapshot, m5_recent, snapshot.get("bars", []))
-        for stage in ("kaze", "mizu", "nanao", "hikari"):
-            mark_lane_worker(workers, "C", stage, "disabled",
-                             reason="Not configured" if stage != "kaze" else f"Reserved ({range_scan})", at=now)
+        mark_lane_worker(workers, "C", "kaze", "setup" if range_cand else "waiting",
+                         reason=range_scan, at=now)
 
         # Early Heads-up when M5 rejection occurs before M1 confirmation:
         if b_analysis and b_analysis.get("rejection") and b_analysis.get("next_step") == "WAITING FOR M1 CONFIRMATION":
@@ -291,10 +290,11 @@ def process(source, step, cursor, calendar, revision):
                 ))
                 send_telegram(format_headsup(zone.get("direction", "SELL"), zone, rej, now))
 
-        pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
+        pending = [item for item in (candidate, scalp, range_cand) if item and not store.get("signal", item["id"])]
         for item in pending:
             item.setdefault("session", session_label(snapshot["now"]))
-            item.setdefault("lane", "B" if item.get("strategy") else "A")
+            lane = "C" if item.get("id", "").startswith("c_") else ("B" if item.get("strategy") else "A")
+            item.setdefault("lane", lane)
         if demo_account.enabled():
             for item in pending:
                 if item.get("strategy") and not store.get("demo_candidate", item["id"]):
@@ -399,13 +399,10 @@ def process(source, step, cursor, calendar, revision):
         store.save_bars(snapshot["bars"], revision)
         for frame, bars in snapshot.get("frames", {}).items():
             store.save_bars(bars, revision, frame)
-        for lane in ("A", "B"):
+        for lane in ("A", "B", "C"):
             for stage in ("mizu", "nanao", "hikari"):
                 if workers["lanes"][lane]["stages"][stage]["status"] == "idle":
                     mark_lane_worker(workers, lane, stage, "waiting", reason="No candidate", at=now)
-        for stage in ("kaze", "mizu", "nanao", "hikari"):
-            mark_lane_worker(workers, "C", stage, "disabled",
-                             reason="Not configured" if stage != "kaze" else f"Reserved ({range_scan})", at=now)
         latency_ms = round((time.perf_counter() - cycle_start) * 1000, 1)
         feed_reason = f"Feed {'live' if not snapshot.get('closed') else 'closed'} · {latency_ms}ms"
         mark_worker(workers, "idle", reason=feed_reason, at=now)

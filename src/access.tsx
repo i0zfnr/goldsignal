@@ -286,7 +286,7 @@ function WorkerStatus() {
         return <section className="crew-lane" key={lane.id}>
           <div className="crew-lane-head">
             <strong>{lane.label}</strong>
-            <Badge tone={active ? "positive" : "neutral"}>{active ? "Active" : lane.id === "C" ? "Reserved" : "Waiting"}</Badge>
+            <Badge tone={active ? "positive" : "neutral"}>{active ? "Active" : "Waiting"}</Badge>
           </div>
           {lane.id === "B" && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, margin: "6px 0 12px", padding: "8px 12px", background: "var(--raised)", border: "1px solid var(--line)", borderRadius: 8 }}>
@@ -321,7 +321,7 @@ function WorkerStatus() {
           </div>
         </section>;
       })}
-      <p className="small muted">Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C is reserved until it has its own evidence.</p>
+      <p className="small muted">Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C trades Asian range liquidity sweeps.</p>
     </>}
   </section>;
 }
