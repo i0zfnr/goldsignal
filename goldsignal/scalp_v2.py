@@ -13,6 +13,7 @@ PARAMS = dict(
     displacement=1.5,
     median_window=20,
     zone_source_window=6,
+    max_zone_height=6.0,
     stop_buffer=0.10,
     band=0.25,
     targets=(1.0, 1.5),
@@ -93,7 +94,13 @@ def zones(bars, now):
                            if row["close"] > row["open"]), None)
             if source is None:
                 continue
-            direction, top, bottom = "SELL", source["high"], source["low"]
+            direction = "SELL"
+            raw_top = source["high"]
+            raw_bot = source["low"]
+            if raw_top - raw_bot > PARAMS["max_zone_height"]:
+                body_bot = min(source["open"], source["close"])
+                raw_bot = body_bot if (raw_top - body_bot <= PARAMS["max_zone_height"]) else round(raw_top - PARAMS["max_zone_height"], 2)
+            top, bottom = raw_top, raw_bot
             swing = broken[-1]
         elif bar["close"] > bar["open"]:
             broken = [row for row in pending if row["kind"] == "high"
@@ -104,35 +111,67 @@ def zones(bars, now):
                            if row["close"] < row["open"]), None)
             if source is None:
                 continue
-            direction, top, bottom = "BUY", source["high"], source["low"]
+            direction = "BUY"
+            raw_top = source["high"]
+            raw_bot = source["low"]
+            if raw_top - raw_bot > PARAMS["max_zone_height"]:
+                body_top = max(source["open"], source["close"])
+                raw_top = body_top if (body_top - raw_bot <= PARAMS["max_zone_height"]) else round(raw_bot + PARAMS["max_zone_height"], 2)
+            top, bottom = raw_top, raw_bot
             swing = broken[-1]
         else:
             continue
         invalidated = None
+        mitigated = None
         for later in bars[index + 1:]:
-            if later["time"] + 900 > now:
+            later_close_time = later["time"] + 900
+            if later_close_time > now:
                 break
-            if direction == "SELL" and later["close"] > top:
-                invalidated = later["time"] + 900
-                break
-            if direction == "BUY" and later["close"] < bottom:
-                invalidated = later["time"] + 900
-                break
+            if direction == "SELL":
+                if later["close"] > top:
+                    invalidated = later_close_time
+                    break
+                if later["high"] >= bottom and mitigated is None:
+                    mitigated = later_close_time
+            elif direction == "BUY":
+                if later["close"] < bottom:
+                    invalidated = later_close_time
+                    break
+                if later["low"] <= top and mitigated is None:
+                    mitigated = later_close_time
         result.append(dict(
             id=f"z_{direction}_{bar['time']}", direction=direction, top=top, bottom=bottom,
             candle=bar["time"], created=created,
             source=dict(time=source["time"], open=source["open"], high=source["high"],
                         low=source["low"], close=source["close"]),
             swing=dict(price=swing["price"], time=swing["time"], confirmed=swing["confirmed"]),
-            broken_at=bar["close"], invalidated=invalidated,
+            broken_at=bar["close"], invalidated=invalidated, mitigated=mitigated,
             expired=created + PARAMS["zone_ttl"],
         ))
+    return result
+
+
+def deduplicate_zones(zones_):
+    result = []
+    for z in zones_:
+        overlap = False
+        for chosen in result:
+            if chosen["direction"] == z["direction"]:
+                overlap_height = min(chosen["top"], z["top"]) - max(chosen["bottom"], z["bottom"])
+                if overlap_height > 0:
+                    min_height = min(chosen["top"] - chosen["bottom"], z["top"] - z["bottom"])
+                    if min_height > 0 and overlap_height / min_height >= 0.4:
+                        overlap = True
+                        break
+        if not overlap:
+            result.append(z)
     return result
 
 
 def active(zones_, now, price):
     rows = [row for row in zones_ if (row["invalidated"] is None or row["invalidated"] > now) and row["expired"] > now]
     rows.sort(key=lambda row: abs(price - (row["top"] + row["bottom"]) / 2))
+    rows = deduplicate_zones(rows)
     return rows
 
 
@@ -243,8 +282,10 @@ def analyze(snapshot, mtf="M15"):
 
     all_zones = zones(m15, now)
     live_zones = active(all_zones, now, price)
-    nearest_sell = next((row for row in live_zones if row["direction"] == "SELL"), None)
-    nearest_buy = next((row for row in live_zones if row["direction"] == "BUY"), None)
+    fresh_sells = [row for row in live_zones if row["direction"] == "SELL" and not row.get("mitigated")]
+    fresh_buys = [row for row in live_zones if row["direction"] == "BUY" and not row.get("mitigated")]
+    nearest_sell = fresh_sells[0] if fresh_sells else next((row for row in live_zones if row["direction"] == "SELL"), None)
+    nearest_buy = fresh_buys[0] if fresh_buys else next((row for row in live_zones if row["direction"] == "BUY"), None)
 
     report = dict(
         version=PARAMS["version"], mtf=mtf, now=now, price=price,

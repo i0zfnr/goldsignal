@@ -210,7 +210,10 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
           {nearestSell && (
             <div className="compact-zone-item sell">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span><strong className="warn">🔴 M15 Supply:</strong> {price(nearestSell.bottom)} – {price(nearestSell.top)}</span>
+                <span>
+                  <strong className="warn">🔴 M15 Supply:</strong> {price(nearestSell.bottom)} – {price(nearestSell.top)}
+                  <small style={{ marginLeft: 6, opacity: 0.85, fontSize: "0.75rem" }}>({nearestSell.mitigated ? "Tested" : "Fresh"})</small>
+                </span>
                 <span className="small muted">{distanceToEdge(nearestSell)}</span>
               </div>
             </div>
@@ -218,7 +221,10 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
           {nearestBuy && (
             <div className="compact-zone-item buy">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span><strong className="good">🟢 M15 Demand:</strong> {price(nearestBuy.bottom)} – {price(nearestBuy.top)}</span>
+                <span>
+                  <strong className="good">🟢 M15 Demand:</strong> {price(nearestBuy.bottom)} – {price(nearestBuy.top)}
+                  <small style={{ marginLeft: 6, opacity: 0.85, fontSize: "0.75rem" }}>({nearestBuy.mitigated ? "Tested" : "Fresh"})</small>
+                </span>
                 <span className="small muted">{distanceToEdge(nearestBuy)}</span>
               </div>
             </div>
