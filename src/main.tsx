@@ -150,8 +150,11 @@ function Profile() {
 function BAnalysisPanel({ analysis, displayTime, price }: {
   analysis: BAnalysis; displayTime: (ts: number) => string; price: (value?: number | null) => string;
 }) {
+  const [switching, setSwitching] = useState(false);
+  const activeMtf = analysis.mtf ?? "M15";
   const h1 = analysis.h1;
   const m15 = analysis.m15;
+  const m5 = analysis.m5;
   const zones = analysis.zones;
   const nextStep = analysis.next_step;
   const reason = analysis.reason;
@@ -160,12 +163,26 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
   const trigger = analysis.trigger;
   const currentPrice = analysis.price;
 
-  const biasLabel = (b: typeof h1) => {
+  async function setMtf(mode: "M15" | "H1") {
+    if (switching || mode === activeMtf) return;
+    setSwitching(true);
+    try {
+      await api("/api/strategy-b/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mtf: mode }),
+      });
+    } catch {} finally {
+      setSwitching(false);
+    }
+  }
+
+  const biasLabel = (b: { direction: string; high_at?: number | null }) => {
     if (b.direction === "bullish") return <span className="good font-semibold">Bullish</span>;
     if (b.direction === "bearish") return <span className="warn font-semibold">Bearish</span>;
     return <span className="muted">Neutral</span>;
   };
-  const biasTime = (b: typeof h1) => b.high_at ? ` · confirmed ${displayTime(b.high_at)} MYT` : "";
+  const biasTime = (b: { high_at?: number | null }) => b.high_at ? ` · confirmed ${displayTime(b.high_at)} MYT` : "";
 
   const stepBadge = (step: string) => {
     const tones: Record<string, "positive" | "negative" | "neutral" | "accent"> = {
@@ -191,15 +208,53 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
   return (
     <div className="b-analysis-panel" style={{ marginTop: 12 }}>
       <details className="insight-details" open><summary>Multi-Timeframe Structure / Dinamik Struktur MTF</summary>
-        <div className="grid" style={{ gap: 8, marginTop: 8 }}>
-          <div><strong>H1 Direction</strong> · {biasLabel(h1)}<span className="muted small">{biasTime(h1)}</span></div>
-          <div><strong>M15 Context</strong> · {biasLabel(m15)}<span className="muted small">{biasTime(m15)}</span></div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBlock: "8px 10px", padding: "6px 8px", background: "var(--raised)", border: "1px solid var(--line)", borderRadius: 8 }}>
+          <span className="small"><strong>Direction Filter</strong>:</span>
+          <div className="segment-group" style={{ gap: 2 }}>
+            <button
+              type="button"
+              className={activeMtf === "M15" ? "primary small" : "small"}
+              style={{ minHeight: 28, padding: "2px 8px", fontSize: ".75rem" }}
+              disabled={switching}
+              onClick={() => void setMtf("M15")}
+            >
+              M15 (Active Scalp)
+            </button>
+            <button
+              type="button"
+              className={activeMtf === "H1" ? "primary small" : "small"}
+              style={{ minHeight: 28, padding: "2px 8px", fontSize: ".75rem" }}
+              disabled={switching}
+              onClick={() => void setMtf("H1")}
+            >
+              H1 (Macro Trend)
+            </button>
+          </div>
         </div>
+
+        {activeMtf === "M15" ? (
+          <div className="grid" style={{ gap: 8, marginTop: 8 }}>
+            <div><strong>M15 Direction (Primary)</strong> · {biasLabel(m15)}<span className="muted small">{biasTime(m15)}</span></div>
+            <div><strong>M5 Context (Secondary)</strong> · {biasLabel(m5 ?? { direction: "neutral" })}<span className="muted small">{biasTime(m5 ?? {})}</span></div>
+          </div>
+        ) : (
+          <div className="grid" style={{ gap: 8, marginTop: 8 }}>
+            <div><strong>H1 Direction (Primary)</strong> · {biasLabel(h1)}<span className="muted small">{biasTime(h1)}</span></div>
+            <div><strong>M15 Context (Secondary)</strong> · {biasLabel(m15)}<span className="muted small">{biasTime(m15)}</span></div>
+          </div>
+        )}
+
         <p className="small muted" style={{ marginTop: 6 }}>
-          {h1.direction === "bearish" && m15.direction === "bullish" && "Bearish H1 with bullish M15 pullback: eligible for WATCH SELL."}
-          {h1.direction === "bullish" && m15.direction === "bearish" && "Bullish H1 with bearish M15 pullback: eligible for WATCH BUY."}
-          {h1.direction === "neutral" && "Neutral H1: watch zones active, but ENTRY READY is blocked."}
-          {h1.direction === m15.direction && h1.direction !== "neutral" && `H1 and M15 aligned ${h1.direction}.`}
+          {activeMtf === "M15" ? (
+            m15.direction === "neutral" ? "Neutral M15: watch zones active, but ENTRY READY is blocked." :
+            m15.direction === "bearish" ? "Bearish M15: eligible for SELL setups on M5 rejection." :
+            "Bullish M15: eligible for BUY setups on M5 rejection."
+          ) : (
+            h1.direction === "neutral" ? "Neutral H1: watch zones active, but ENTRY READY is blocked." :
+            h1.direction === "bearish" && m15.direction === "bullish" ? "Bearish H1 with bullish M15 pullback: eligible for WATCH SELL." :
+            h1.direction === "bullish" && m15.direction === "bearish" ? "Bullish H1 with bearish M15 pullback: eligible for WATCH BUY." :
+            `H1 and M15 aligned ${h1.direction}.`
+          )}
         </p>
       </details>
 

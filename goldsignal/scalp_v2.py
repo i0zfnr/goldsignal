@@ -213,7 +213,7 @@ def _candidate(zone, rejection, trigger, snapshot, m15_closed):
     )
 
 
-def analyze(snapshot):
+def analyze(snapshot, mtf="M15"):
     now = snapshot["now"]
     quote = snapshot.get("quote") or {}
     price = quote.get("bid") or quote.get("ask") or 0.0
@@ -238,30 +238,34 @@ def analyze(snapshot):
     m15_bias = safe_bias(m15, 900)
     m5_bias = safe_bias(m5, 300)
 
+    primary_bias = m15_bias if mtf == "M15" else h1_bias
+    context_bias = m5_bias if mtf == "M15" else m15_bias
+
     all_zones = zones(m15, now)
     live_zones = active(all_zones, now, price)
     nearest_sell = next((row for row in live_zones if row["direction"] == "SELL"), None)
     nearest_buy = next((row for row in live_zones if row["direction"] == "BUY"), None)
 
     report = dict(
-        version=PARAMS["version"], now=now, price=price,
+        version=PARAMS["version"], mtf=mtf, now=now, price=price,
         h1=h1_bias, m30=m30_bias, m15=m15_bias, m5=m5_bias,
+        primary_bias=primary_bias, context_bias=context_bias,
         tf_bias=dict(M5=m5_bias.get("direction", "neutral"),
                      M15=m15_bias.get("direction", "neutral"),
                      M30=m30_bias.get("direction", "neutral"),
                      H1=h1_bias.get("direction", "neutral")),
         zones=live_zones[:6], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
-        next_step="WAITING FOR H1 DIRECTION", reason=None,
+        next_step=f"WAITING FOR {mtf} DIRECTION", reason=None,
         candidate=None, rejection=None, trigger=None, zone=None,
     )
     if not live_zones:
-        report["next_step"] = "WATCH BUY" if h1_bias.get("direction") == "bullish" else (
-            "WATCH SELL" if h1_bias.get("direction") == "bearish" else "WAITING FOR H1 DIRECTION"
+        report["next_step"] = "WATCH BUY" if primary_bias.get("direction") == "bullish" else (
+            "WATCH SELL" if primary_bias.get("direction") == "bearish" else f"WAITING FOR {mtf} DIRECTION"
         )
         report["reason"] = "No active M15 liquidity zone."
         return report
 
-    wanted = {"bearish": "SELL", "bullish": "BUY"}.get(h1_bias.get("direction"))
+    wanted = {"bearish": "SELL", "bullish": "BUY"}.get(primary_bias.get("direction"))
     chosen_zone = next((row for row in live_zones if row["direction"] == wanted), live_zones[0])
     report["zone"] = chosen_zone
 
@@ -291,13 +295,13 @@ def analyze(snapshot):
         return report
 
     if candidate_found and wanted != candidate_found["direction"]:
-        report["reason"] = "M1 confirmation exists but H1 direction disagrees."
-        report["next_step"] = "WATCH BUY" if wanted == "BUY" else "WATCH SELL" if wanted == "SELL" else "WAITING FOR H1 DIRECTION"
+        report["reason"] = f"M1 confirmation exists but {mtf} direction disagrees."
+        report["next_step"] = "WATCH BUY" if wanted == "BUY" else "WATCH SELL" if wanted == "SELL" else f"WAITING FOR {mtf} DIRECTION"
         return report
 
-    if h1_bias.get("direction") == "neutral":
+    if primary_bias.get("direction") == "neutral":
         report["next_step"] = "WATCH BUY" if chosen_zone["direction"] == "BUY" else "WATCH SELL"
-        report["reason"] = "H1 structure is neutral; watch zone only, no entry."
+        report["reason"] = f"{mtf} structure is neutral; watch zone only, no entry."
     elif latest_rejection and now <= latest_rejection["time"] + PARAMS["entry_window"]:
         report["next_step"] = "WAITING FOR M1 CONFIRMATION"
         report["reason"] = "M5 rejection found; waiting for a closed M1 break."

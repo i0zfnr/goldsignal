@@ -16,6 +16,7 @@ ORIGIN = os.getenv("GOLDSIGNAL_API", "http://127.0.0.1:8011")
 ROUTES = {("GET", "/api/dashboard"), ("GET", "/api/performance"), ("GET", "/api/sessions"),
           ("POST", "/api/lot-size"),
           ("GET", "/api/pnl"), ("PUT", "/api/pnl"), ("DELETE", "/api/pnl"),
+          ("GET", "/api/strategy-b/config"), ("PUT", "/api/strategy-b/config"),
           ("GET", "/api/viewer-profile"), ("PUT", "/api/viewer-profile"),
           ("POST", "/api/push/status"), ("POST", "/api/push/test"),
           ("PUT", "/api/push"), ("DELETE", "/api/push"), ("GET", "/api/auth/session"),

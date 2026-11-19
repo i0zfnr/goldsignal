@@ -29,11 +29,13 @@ export type BZone = {
 };
 
 export type BAnalysis = {
-  version: string; now: number; price: number;
+  version: string; mtf?: "M15" | "H1"; now: number; price: number;
   h1: BiasReading;
   m30?: BiasReading;
   m15: BiasReading;
   m5?: BiasReading;
+  primary_bias?: BiasReading;
+  context_bias?: BiasReading;
   tf_bias?: Record<"M5" | "M15" | "M30" | "H1", "bullish" | "bearish" | "neutral">;
   zones: BZone[];
   nearest_sell?: BZone | null;

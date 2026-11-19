@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
-from .config import MARKET_SESSIONS, MODE, MY, STALE_SECONDS, SYMBOL, session, utc_now
+from .config import MARKET_SESSIONS, MODE, MY, STALE_SECONDS, STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now
 from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import admin, identity, router
@@ -440,6 +440,28 @@ def pnl_delete(date: str, request: Request, response: Response):
     with transaction() as store:
         store.delete("pnl", key)
     return {"ok": True}
+
+
+class StrategyBConfig(BaseModel):
+    mtf: Literal["M15", "H1"]
+
+
+@app.get("/api/strategy-b/config")
+def get_strategy_b_config(request: Request, response: Response):
+    get_id(request, response)
+    with transaction() as store:
+        b_settings = store.get("settings", "strategy_b") or {}
+        mtf = b_settings.get("mtf") or STRATEGY_B_MTF
+        return {"mtf": mtf, "version": STRATEGY_B_VERSION}
+
+
+@app.put("/api/strategy-b/config")
+def set_strategy_b_config(body: StrategyBConfig, request: Request, response: Response):
+    get_id(request, response)
+    with transaction() as store:
+        existing = store.get("settings", "strategy_b") or {}
+        store.put("settings", "strategy_b", {**existing, "mtf": body.mtf})
+    return {"ok": True, "mtf": body.mtf}
 
 
 if Path("dist/index.html").is_file():

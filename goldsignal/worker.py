@@ -13,7 +13,7 @@ from filelock import FileLock
 from . import news
 from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, send_pending
-from .config import DB, ENTRY_TTL, MODE, REVIEW, STRATEGY_B_VERSION, SYMBOL, session, utc_now
+from .config import DB, ENTRY_TTL, MODE, REVIEW, STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now
 from .diagnostics import record
 from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .lifecycle import advance
@@ -244,7 +244,9 @@ def process(source, step, cursor, calendar, revision):
                 bars.update({bar["time"]: bar for bar in frames[frame]})
                 return [bars[time] for time in sorted(bars)[-12:]]
             if STRATEGY_B_VERSION == "katana_v1" and "H1" in frames:
-                b_analysis = analyze_v2(snapshot)
+                b_settings = store.get("settings", "strategy_b") or {}
+                b_mtf = b_settings.get("mtf") or STRATEGY_B_MTF
+                b_analysis = analyze_v2(snapshot, mtf=b_mtf)
                 scalp = b_analysis.get("candidate")
                 scalp_scan = b_analysis.get("reason") or "Waiting for setup"
             else:
