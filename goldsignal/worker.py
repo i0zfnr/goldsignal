@@ -103,27 +103,19 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
         reserve(MODEL)
         response = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
-            headers={"x-goog-api-key": key}, timeout=8,
+            headers={"x-goog-api-key": key}, timeout=3.8,
             json={"contents": [{"parts": [{"text": (
-                'Role: deterministic entry reviewer. You never predict prices and you use only the JSON evidence supplied. '
-                'Rules: (1) keep the supplied side and levels exactly; '
-                '(2) CONFIRM only when every field is present and consistent: side, entry, stop, targets, trend deltas, '
-                'pattern.history >= 100, quote inside the entry zone, and no calendar pause; '
-                '(3) WAIT when any required field is missing, null, stale or contradictory; '
-                '(4) REJECT only when the supplied evidence directly contradicts the side; '
-                '(5) pattern.next4_bps is a historical median of past moves, never a forecast or expected profit; '
-                '(6) never invent levels, news, orders, institutions or probabilities; '
-                '(7) reason is at most 12 words and must cite at least one supplied field name. '
-                'Output JSON only with keys decision (CONFIRM, WAIT, REJECT) and reason. '
+                'Role: fast deterministic entry reviewer. Confirm only if side, entry, stop, targets are consistent. '
+                'Output JSON only with keys decision (CONFIRM, WAIT, REJECT) and reason (max 10 words).'
                 + calendar_rule + " Evidence: " + json.dumps(evidence, separators=(",", ":"))
             )}]}], "generationConfig": {"responseMimeType": "application/json",
                                         "temperature": 0,
                                         "topP": 0.1,
-                                        "maxOutputTokens": 512 if MODEL == PRO_MODEL else 96,
+                                        "maxOutputTokens": 64,
                                         "responseSchema": {"type": "OBJECT", "required": ["decision", "reason"],
                                             "properties": {"decision": {"type": "STRING", "enum": ["CONFIRM", "WAIT", "REJECT"]},
                                                            "reason": {"type": "STRING"}}},
-                                        "thinkingConfig": {"thinkingLevel": "low" if MODEL == PRO_MODEL else "minimal"}}},
+                                        "thinkingConfig": {"thinkingLevel": "minimal"}}},
         )
         response.raise_for_status()
         result = json.loads(response.json()["candidates"][0]["content"]["parts"][0]["text"])

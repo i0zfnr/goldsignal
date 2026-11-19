@@ -244,6 +244,14 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
 
           {candidate && (
             <div className="compact-candidate-card" style={{ marginTop: 6, padding: "6px 8px", background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.25)", borderRadius: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span className={`badge small grade-${(candidate.grade ?? "A").toLowerCase().replace("+", "-plus")}`}>
+                  GRADE {candidate.grade ?? "A"}
+                </span>
+                <span className="small muted">
+                  {candidate.grade === "A+" ? "⭐️⭐️⭐️⭐️ Highest" : candidate.grade === "A" ? "⭐️⭐️⭐️ High" : candidate.grade === "B+" ? "⭐️⭐️ Good" : "⭐️ Standard"}
+                </span>
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "0.8125rem" }}>
                 <span>ENTRY BAND:</span>
                 <span className="good">{price(candidate.entry[0])} – {price(candidate.entry[1])}</span>
@@ -531,7 +539,14 @@ function App({ role, signOut, expired }: {
             </div>
             {selected && <a className="small" href={`${page}#signal`} onClick={event => select(event, null)}>Back to live signal</a>}
             {signal ? <>
-              <p className="small muted">{signal.strategy ?? "M15 baseline"}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span className="small muted">{signal.strategy ?? "M15 baseline"}</span>
+                {signal.grade && (
+                  <span className={`badge small grade-${signal.grade.toLowerCase().replace("+", "-plus")}`}>
+                    CONFIDENCE {signal.grade}
+                  </span>
+                )}
+              </div>
               <div className="entry-value"><span>Entry zone</span><strong>{price(signal.entry[0])}–{price(signal.entry[1])}</strong></div>
               <dl className="levels"><div><dt>Current SL</dt><dd className="warn">{price(signal.stop)}</dd></div>
                 {signal.targets.map((target, i) => <div key={target}><dt>TP{i + 1}{signal.hits > i ? " ✓" : ""}</dt><dd className="good">{price(target)} <small>{Math.round(Math.abs(target - signal.reference) / 0.10)} pips</small></dd></div>)}

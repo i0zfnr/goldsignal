@@ -53,6 +53,8 @@ def format_entry(signal: dict, now: float) -> str:
     targets = signal.get("targets", [])
     lane = signal.get("lane", "B")
     strategy = signal.get("strategy", "Liquidity Scalp")
+    grade = signal.get("grade") or (signal.get("evidence") or {}).get("entry_grade") or "A"
+    grade_stars = "⭐️⭐️⭐️⭐️ (Highest)" if grade == "A+" else "⭐️⭐️⭐️ (High)" if grade == "A" else "⭐️⭐️ (Good)" if grade == "B+" else "⭐️ (Standard)"
     time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
 
     icon = "🔴" if direction == "SELL" else "🟢"
@@ -60,8 +62,9 @@ def format_entry(signal: dict, now: float) -> str:
 
     return (
         f"{icon} <b>GOLDSIGNAL · {symbol}</b>\n"
-        f"⚡ <b>{direction} · ENTRY SIGNAL</b>\n"
+        f"⚡ <b>{direction} · ENTRY SIGNAL [{grade}]</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
+        f"🏆 <b>Confidence Grade:</b> <code>{grade}</code> {grade_stars}\n"
         f"🎯 <b>Entry Zone:</b> <code>{entry[0]:.2f} – {entry[1]:.2f}</code>\n"
         f"🛑 <b>Stop Loss:</b> <code>{stop:.2f}</code>\n"
         f"🏁 <b>Targets:</b> {tp_str}\n"

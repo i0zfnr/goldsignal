@@ -253,3 +253,26 @@ def test_strategy_b_config_endpoint(db, monkeypatch):
         assert put_m15.status_code == 200
         assert put_m15.json()["mtf"] == "M15"
 
+
+def test_entry_grade_levels():
+    # 4/4 points -> A+
+    zone_high = {"direction": "SELL", "mitigated": None, "power": 9}
+    rej_clean = {"high": 3720.0, "low": 3716.0, "close": 3717.0}  # wick = 3720-3717 = 3.0 / 4.0 = 75%
+    trig = {"close": 3718.5}
+    snap = {"quote": {"bid": 3718.0, "ask": 3718.25}}
+    grade_aplus = b2.calculate_grade(zone_high, rej_clean, trig, snap, risk=1.5, mtf_aligned=True)
+    assert grade_aplus == "A+"
+
+    # 3/4 points -> A (e.g. not MTF aligned)
+    grade_a = b2.calculate_grade(zone_high, rej_clean, trig, snap, risk=1.5, mtf_aligned=False)
+    assert grade_a == "A"
+
+    # 2/4 points -> B+
+    zone_tested = {"direction": "SELL", "mitigated": 12345, "power": 6}
+    grade_bplus = b2.calculate_grade(zone_tested, rej_clean, trig, snap, risk=1.5, mtf_aligned=False)
+    assert grade_bplus == "B+"
+
+    # 1/4 points -> B
+    grade_b = b2.calculate_grade(zone_tested, {"high": 3720, "low": 3719, "close": 3719.9}, trig, snap, risk=3.5, mtf_aligned=False)
+    assert grade_b == "B"
+

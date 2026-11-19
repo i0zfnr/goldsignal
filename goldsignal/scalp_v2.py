@@ -248,7 +248,26 @@ def _confirmation(m1, rejection, now, direction):
     return None
 
 
-def _candidate(zone, rejection, trigger, snapshot, m15_closed):
+def calculate_grade(zone, rejection, trigger, snapshot, risk, mtf_aligned=True):
+    score = 0
+    if mtf_aligned:
+        score += 1
+    if not zone.get("mitigated") and zone.get("power", 0) >= 8:
+        score += 1
+    if rejection:
+        rng = rejection["high"] - rejection["low"]
+        if rng > 0:
+            wick = (rejection["high"] - rejection["close"]) if zone["direction"] == "SELL" else (rejection["close"] - rejection["low"])
+            if wick / rng >= 0.35:
+                score += 1
+    quote = snapshot.get("quote") or {}
+    spread = round(quote.get("ask", 0) - quote.get("bid", 0), 2) if quote.get("ask") else 0.30
+    if risk <= 2.00 and spread <= 0.40:
+        score += 1
+    return {4: "A+", 3: "A", 2: "B+", 1: "B", 0: "B"}.get(score, "B")
+
+
+def _candidate(zone, rejection, trigger, snapshot, m15_closed, mtf_aligned=True):
     ref = trigger["close"]
     if zone["direction"] == "SELL":
         stop = round(rejection["high"] + PARAMS["stop_buffer"], 2)
@@ -269,17 +288,20 @@ def _candidate(zone, rejection, trigger, snapshot, m15_closed):
     trend_closes = {"15": [row["close"] for row in m15_closed[-4:]]}
     pattern = compare_pattern(m15_closed, sign)
     swing_price = (zone.get("swing") or {}).get("price", zone["top"] if zone["direction"] == "SELL" else zone["bottom"])
+    grade = calculate_grade(zone, rejection, trigger, snapshot, risk, mtf_aligned=mtf_aligned)
     return dict(
         id=f"b2_{zone['id']}_{rejection['time']}_{zone['direction']}", symbol=symbol,
         strategy="B · liquidity scalp", strategy_version=PARAMS["version"], direction=zone["direction"],
+        grade=grade,
         reference=ref, entry=band, initial_stop=stop, stop=stop, targets=target,
         max_spread=min(PARAMS["max_spread"], risk * 0.2), hold_seconds=PARAMS["hold_seconds"],
         created=trigger["time"], expiry=min(trigger["time"] + PARAMS["entry_window"], zone["expired"]),
         hits=0, exits=[], status="PENDING", fill=None,
         result_per_lot=0 if snapshot.get("spec") else None, costs=snapshot.get("spec"),
         evidence=dict(
-            grade="B · liquidity scalp",
-            reason=(f"M15 {'supply' if zone['direction'] == 'SELL' else 'demand'} zone "
+            grade=f"{grade} · Liquidity scalp",
+            entry_grade=grade,
+            reason=(f"[{grade} SETUP] M15 {'supply' if zone['direction'] == 'SELL' else 'demand'} zone "
                     f"{zone['bottom']:.2f}–{zone['top']:.2f} with M5 rejection and M1 confirmation."),
             zone=zone, watch_zone=[zone["bottom"], zone["top"]], rejection=rejection,
             trigger=trigger["bar"], candle=trigger["bar"],
@@ -357,7 +379,7 @@ def analyze(snapshot, mtf="M15"):
             for rej in reversed(rejections):
                 trig = _confirmation(m1, rej, now, zone["direction"])
                 if trig:
-                    cand = _candidate(zone, rej, trig, snapshot, m15)
+                    cand = _candidate(zone, rej, trig, snapshot, m15, mtf_aligned=(wanted == zone["direction"]))
                     if cand:
                         candidate_found = cand
                         report["rejection"] = rej

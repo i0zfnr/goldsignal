@@ -9,6 +9,7 @@ type Evidence = { reason: string; grade: string; pattern?: Pattern };
 export type Signal = {
   id: string; direction: "BUY" | "SELL"; created: number; expiry: number;
   strategy?: string;
+  grade?: "A+" | "A" | "B+" | "B";
   entry: [number, number]; initial_stop: number; stop: number; reference: number;
   targets: number[]; fill: number | null; status: string; hits: number;
   max_spread?: number; hold_seconds?: number;
