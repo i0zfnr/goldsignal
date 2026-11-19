@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
-from .config import MODE, MY, STALE_SECONDS, SYMBOL, session, utc_now
+from .config import MARKET_SESSIONS, MODE, MY, STALE_SECONDS, SYMBOL, session, utc_now
 from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import admin, identity, router
@@ -21,6 +21,7 @@ from .alerts import device_key, queue_test
 from .chat import router as chat_router
 from .diagnostics import record
 from .strategy import executable, gate
+from .sessions import summary as session_summary
 from . import demo_account, demo_phone
 
 
@@ -127,6 +128,26 @@ def performance(request: Request, response: Response, period: Literal["day", "we
             summary["pips"] = round(summary["pips"] + pips, 2)
     return {**totals, "signals": sum(in_period(s["created"]) for s in signals),
             "buckets": [buckets[key] for key in sorted(buckets)]}
+
+
+@app.get("/api/sessions")
+def sessions_report(request: Request, response: Response,
+                    period: Literal["day", "week", "month", "all"] = "day"):
+    get_id(request, response)
+    with transaction() as store:
+        clock = store.get("state", "market", {}).get("now", utc_now()) if MODE == "demo" else utc_now()
+        signals = store.all("signal")
+        candidates = store.all("candidate")
+    today = datetime.fromtimestamp(clock, MY).date()
+    start = {"day": today, "week": today - timedelta(days=today.weekday()),
+             "month": today.replace(day=1), "all": None}[period]
+
+    def in_period(stamp):
+        day = datetime.fromtimestamp(stamp, MY).date()
+        return day <= today and (start is None or day >= start)
+
+    return {"sessions": session_summary(signals, candidates, in_period,
+                                        [name for _, name, *_ in MARKET_SESSIONS])}
 
 
 def entry_snapshot(store, signal, state, wall):

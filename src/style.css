@@ -254,6 +254,8 @@ details p { margin: 4px 0 8px; }
 .report-breakdown th, .report-breakdown td { padding: 8px 4px; text-align: start; border-top: 1px solid var(--line); }
 .report-breakdown th { font-weight: 550; }
 .report-breakdown tr > :last-child { text-align: end; }
+.session-table { max-width: 100%; overflow-x: auto; }
+.session-table table { min-width: 620px; }
 .report-bar { display: inline-block; width: clamp(16px, 5vw, 68px); vertical-align: middle; margin-inline-end: 6px; }
 .report-bar i { display: block; height: 4px; border-radius: 2px; background: currentColor; }
 .access-page { width: min(100%, 480px); margin: clamp(32px, 9vh, 100px) auto 0; }

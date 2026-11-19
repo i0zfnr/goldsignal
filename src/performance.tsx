@@ -6,6 +6,11 @@ const periods = [["day", "Day"], ["week", "Week"], ["month", "Month"], ["all", "
 type Period = typeof periods[number][0];
 type Results = { wins: number; losses: number; flat: number; pips: number };
 type Report = Results & { signals: number; buckets: (Results & { label: string })[] };
+type SessionRow = {
+  session: string; detected: number; published: number; closed: number; wins: number;
+  losses: number; flat: number; pips: number; win_rate: number | null;
+  low: number | null; high: number | null; status: string; last: number | null;
+};
 
 const pipsFormat = new Intl.NumberFormat("en-MY", { maximumFractionDigits: 2, signDisplay: "exceptZero" });
 const closedCount = (row: Results) => row.wins + row.losses + row.flat;
@@ -14,13 +19,20 @@ const winRate = (row: Results) => closedCount(row) ? `${(100 * row.wins / closed
 export function Performance({ revision }: { revision?: string }) {
   const [period, setPeriod] = useState<Period>("day");
   const [report, setReport] = useState<Report | null>(null);
+  const [sessions, setSessions] = useState<SessionRow[] | null>(null);
+  const [sessionError, setSessionError] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     setError("");
+    setSessions(null);
+    setSessionError("");
     api<Report>(`/api/performance?period=${period}`, { signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) setReport(result); })
       .catch(() => { if (!controller.signal.aborted) setError("Could not load performance."); });
+    api<{ sessions: SessionRow[] }>(`/api/sessions?period=${period}`, { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted) setSessions(result.sessions); })
+      .catch(() => { if (!controller.signal.aborted) setSessionError("Session evidence is unavailable. Performance totals remain available."); });
     return () => controller.abort();
   }, [period, revision]);
 
@@ -66,6 +78,29 @@ export function Performance({ revision }: { revision?: string }) {
         </table>
         </div>
       </div> : <EmptyState>No trades closed in this period.</EmptyState>}
+      {sessions && <div className="panel below">
+        <PanelHeading title="Session evidence" as="h3" />
+        <div className="session-table" role="region" aria-label="Session evidence table" tabIndex={0}>
+        <table className="report-breakdown">
+          <thead><tr>
+            <th scope="col">Session</th><th scope="col">Detected</th><th scope="col">Closed</th>
+            <th scope="col">Win rate before fees · 95% CI</th><th scope="col">Pips before fees</th><th scope="col">Evidence</th>
+          </tr></thead>
+          <tbody>{sessions.map(row => <tr key={row.session}>
+            <th scope="row">{row.session}</th>
+            <td>{row.detected}</td>
+            <td>{row.closed}</td>
+            <td>{row.win_rate === null ? "—" : `${row.win_rate}%`}
+              {row.low !== null && <span className="muted"> ({row.low}–{row.high}%)</span>}</td>
+            <td className={row.pips < 0 ? "warn" : row.pips > 0 ? "good" : ""}>
+              {row.closed ? pipsFormat.format(row.pips) : "—"}</td>
+            <td className="muted">{row.status}</td>
+          </tr>)}</tbody>
+        </table>
+        </div>
+        <p className="small muted">Historical simulated results before fees. These are not calibrated entry probabilities or a promise of an entry.</p>
+      </div>}
+      {sessionError && <p className="small muted" role="status">{sessionError}</p>}
     </>}
   </section>;
 }

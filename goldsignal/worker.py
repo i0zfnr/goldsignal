@@ -19,6 +19,7 @@ from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .lifecycle import advance
 from .market import MT5, Replay
 from .scalp import scalp_candidate
+from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
 from . import demo_account
@@ -223,6 +224,8 @@ def process(source, step, cursor, calendar, revision):
                 return [bars[time] for time in sorted(bars)[-12:]]
             scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
         pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
+        for item in pending:
+            item.setdefault("session", session_label(snapshot["now"]))
         if demo_account.enabled():
             for item in pending:
                 if item.get("strategy") and not store.get("demo_candidate", item["id"]):
