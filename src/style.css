@@ -529,57 +529,77 @@ footer a { color: inherit; }
 .lot-result > span { display: block; font-size: .6875rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
 .lot-result > strong { display: block; margin: 4px 0; font-size: 2.25rem; font-weight: 650; letter-spacing: .01em; }
 .lot-result > small { color: var(--muted); }
-/* --- Clean Katana-Style Zones inside Chart Canvas --- */
+/* --- Katana-Style Zones inside Chart (Boxes, NO lines) --- */
 .zones-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.zone-box {
+.zone-band {
   position: absolute; pointer-events: none;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding-right: 8px;
   transition: top 80ms linear, height 80ms linear;
 }
-.zone-box.sell-zone {
-  background: color-mix(in srgb, var(--sell) 10%, transparent);
-  border-top: 1px solid color-mix(in srgb, var(--sell) 60%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--sell) 60%, transparent);
+.zone-band.sell-band {
+  background: rgba(239, 68, 68, 0.12);
+  border-top: 1px solid rgba(239, 68, 68, 0.45);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.45);
 }
-.zone-box.buy-zone {
-  background: color-mix(in srgb, var(--buy) 10%, transparent);
-  border-top: 1px solid color-mix(in srgb, var(--buy) 60%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--buy) 60%, transparent);
+.zone-band.buy-band {
+  background: rgba(16, 185, 129, 0.12);
+  border-top: 1px solid rgba(16, 185, 129, 0.45);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.45);
 }
-.zone-tag {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
-  font-size: .6875rem; font-weight: 600; white-space: nowrap; max-width: calc(100% - 120px);
-  overflow: hidden; text-overflow: ellipsis;
-  background: var(--panel); border: 1px solid var(--line); color: var(--text);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+
+.zone-box-card {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.04em; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
-.sell-zone .zone-tag {
-  border-color: color-mix(in srgb, var(--sell) 50%, var(--line));
-  color: var(--sell);
+.zone-box-card.sell-box {
+  background: rgba(239, 68, 68, 0.35);
+  border: 1px solid #ef4444;
+  color: #ffffff;
 }
-.buy-zone .zone-tag {
-  border-color: color-mix(in srgb, var(--buy) 50%, var(--line));
-  color: var(--buy);
+.zone-box-card.buy-box {
+  background: rgba(16, 185, 129, 0.35);
+  border: 1px solid #10b981;
+  color: #ffffff;
 }
-.zone-pin { font-size: .625rem; }
-.zone-title { font-weight: 650; }
-.zone-desc { opacity: .75; font-size: .625rem; font-weight: 400; margin-left: 2px; }
+.zone-box-type { font-weight: 800; font-size: 10px; }
+.zone-box-sep { opacity: 0.5; font-weight: 400; }
+.zone-box-range { font-variant-numeric: tabular-nums; }
+.zone-box-tag { opacity: 0.85; font-size: 9px; font-weight: 600; }
 
 .entry-band-box {
   position: absolute; pointer-events: none;
-  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+  background: rgba(234, 179, 8, 0.14);
   border-top: 1px dashed var(--gold);
   border-bottom: 1px dashed var(--gold);
 }
-.entry-band-tag {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  background: var(--selected); color: var(--gold); border: 1px solid var(--gold);
-  border-radius: 999px; padding: 2px 8px; font-size: .6875rem; font-weight: 650; white-space: nowrap;
+.entry-band-card {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(202, 138, 4, 0.4); border: 1px solid var(--gold); color: #ffffff;
+  border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; white-space: nowrap;
 }
 
+/* Compact Analysis Sidebar Items */
+.compact-zone-item {
+  padding: 5px 8px; border-radius: 6px; font-size: .8125rem;
+}
+.compact-zone-item.sell {
+  background: rgba(239, 68, 68, 0.08); border-left: 3px solid var(--sell);
+}
+.compact-zone-item.buy {
+  background: rgba(16, 185, 129, 0.08); border-left: 3px solid var(--buy);
+}
+.secondary-zones-accordion summary {
+  cursor: pointer; opacity: 0.8; font-size: .75rem;
+}
+.secondary-zones-accordion summary:hover { opacity: 1; color: var(--gold); }
+
 @media (max-width: 600px) {
-  .zone-desc { display: none; }
-  .zone-tag { font-size: .625rem; padding: 1px 6px; }
+  .zone-box-card { font-size: 10px; padding: 2px 6px; gap: 4px; }
+  .zone-box-tag { display: none; }
 }
 
 .lot-stats { margin: 0 0 8px; }

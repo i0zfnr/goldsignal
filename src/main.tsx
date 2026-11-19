@@ -150,39 +150,21 @@ function Profile() {
 function BAnalysisPanel({ analysis, displayTime, price }: {
   analysis: BAnalysis; displayTime: (ts: number) => string; price: (value?: number | null) => string;
 }) {
-  const [switching, setSwitching] = useState(false);
-  const activeMtf = analysis.mtf ?? "M15";
-  const h1 = analysis.h1;
   const m15 = analysis.m15;
   const m5 = analysis.m5;
-  const zones = analysis.zones;
   const nextStep = analysis.next_step;
   const reason = analysis.reason;
   const candidate = analysis.candidate;
-  const rejection = analysis.rejection;
-  const trigger = analysis.trigger;
   const currentPrice = analysis.price;
+  const nearestSell = analysis.nearest_sell;
+  const nearestBuy = analysis.nearest_buy;
+  const secondaryZones = (analysis.zones ?? []).filter(z => z.id !== nearestSell?.id && z.id !== nearestBuy?.id);
 
-  async function setMtf(mode: "M15" | "H1") {
-    if (switching || mode === activeMtf) return;
-    setSwitching(true);
-    try {
-      await api("/api/strategy-b/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mtf: mode }),
-      });
-    } catch {} finally {
-      setSwitching(false);
-    }
-  }
-
-  const biasLabel = (b: { direction: string; high_at?: number | null }) => {
+  const biasLabel = (b: { direction: string }) => {
     if (b.direction === "bullish") return <span className="good font-semibold">Bullish</span>;
     if (b.direction === "bearish") return <span className="warn font-semibold">Bearish</span>;
     return <span className="muted">Neutral</span>;
   };
-  const biasTime = (b: { high_at?: number | null }) => b.high_at ? ` · confirmed ${displayTime(b.high_at)} MYT` : "";
 
   const stepBadge = (step: string) => {
     const tones: Record<string, "positive" | "negative" | "neutral" | "accent"> = {
@@ -200,141 +182,88 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
 
   const isInside = (z: BZone) => currentPrice >= z.bottom && currentPrice <= z.top;
   const distanceToEdge = (z: BZone) => {
-    if (isInside(z)) return "0.00 (inside zone)";
+    if (isInside(z)) return "inside";
     const dist = Math.min(Math.abs(currentPrice - z.top), Math.abs(currentPrice - z.bottom));
-    return `${dist.toFixed(2)} XAUUSD`;
+    return `${dist.toFixed(2)} away`;
   };
 
   return (
-    <div className="b-analysis-panel" style={{ marginTop: 12 }}>
-      <details className="insight-details" open><summary>Multi-Timeframe Structure / Dinamik Struktur MTF</summary>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBlock: "8px 10px", padding: "6px 8px", background: "var(--raised)", border: "1px solid var(--line)", borderRadius: 8 }}>
-          <span className="small"><strong>Direction Filter</strong>:</span>
-          <div className="segment-group" style={{ gap: 2 }}>
-            <button
-              type="button"
-              className={activeMtf === "M15" ? "primary small" : "small"}
-              style={{ minHeight: 28, padding: "2px 8px", fontSize: ".75rem" }}
-              disabled={switching}
-              onClick={() => void setMtf("M15")}
-            >
-              M15 (Active Scalp)
-            </button>
-            <button
-              type="button"
-              className={activeMtf === "H1" ? "primary small" : "small"}
-              style={{ minHeight: 28, padding: "2px 8px", fontSize: ".75rem" }}
-              disabled={switching}
-              onClick={() => void setMtf("H1")}
-            >
-              H1 (Macro Trend)
-            </button>
-          </div>
+    <div className="b-analysis-panel" style={{ marginTop: 8 }}>
+      {/* 1. Multi-Timeframe Structure - Compact */}
+      <details className="insight-details" open>
+        <summary>Multi-Timeframe Structure / Dinamik Struktur MTF</summary>
+        <div className="compact-mtf-row" style={{ display: "flex", justifyContent: "space-between", marginBlock: "6px 2px", fontSize: ".8125rem" }}>
+          <div><strong>M15 Direction:</strong> {biasLabel(m15)}</div>
+          <div><strong>M5 Context:</strong> {biasLabel(m5 ?? { direction: "neutral" })}</div>
         </div>
-
-        {activeMtf === "M15" ? (
-          <div className="grid" style={{ gap: 8, marginTop: 8 }}>
-            <div><strong>M15 Direction (Primary)</strong> · {biasLabel(m15)}<span className="muted small">{biasTime(m15)}</span></div>
-            <div><strong>M5 Context (Secondary)</strong> · {biasLabel(m5 ?? { direction: "neutral" })}<span className="muted small">{biasTime(m5 ?? {})}</span></div>
-          </div>
-        ) : (
-          <div className="grid" style={{ gap: 8, marginTop: 8 }}>
-            <div><strong>H1 Direction (Primary)</strong> · {biasLabel(h1)}<span className="muted small">{biasTime(h1)}</span></div>
-            <div><strong>M15 Context (Secondary)</strong> · {biasLabel(m15)}<span className="muted small">{biasTime(m15)}</span></div>
-          </div>
-        )}
-
-        <p className="small muted" style={{ marginTop: 6 }}>
-          {activeMtf === "M15" ? (
-            m15.direction === "neutral" ? "Neutral M15: watch zones active, but ENTRY READY is blocked." :
-            m15.direction === "bearish" ? "Bearish M15: eligible for SELL setups on M5 rejection." :
-            "Bullish M15: eligible for BUY setups on M5 rejection."
-          ) : (
-            h1.direction === "neutral" ? "Neutral H1: watch zones active, but ENTRY READY is blocked." :
-            h1.direction === "bearish" && m15.direction === "bullish" ? "Bearish H1 with bullish M15 pullback: eligible for WATCH SELL." :
-            h1.direction === "bullish" && m15.direction === "bearish" ? "Bullish H1 with bearish M15 pullback: eligible for WATCH BUY." :
-            `H1 and M15 aligned ${h1.direction}.`
-          )}
+        <p className="small muted" style={{ marginTop: 2 }}>
+          {m15.direction === "neutral" ? "Neutral M15: watch zones active, waiting for structure break." :
+           m15.direction === "bearish" ? "Bearish M15: eligible for SELL setups on M5 rejection." :
+           "Bullish M15: eligible for BUY setups on M5 rejection."}
         </p>
       </details>
 
-      <details className="insight-details" open><summary>Zone Rationale / Rasional Zon</summary>
-        <div style={{ marginTop: 8 }}>
-          {zones.length > 0 ? zones.map((z: BZone) => {
-            const isSell = z.direction === "SELL";
-            const inside = isInside(z);
-            return (
-              <div key={z.id} className="small" style={{
-                marginBottom: 8, padding: 10,
-                borderLeft: `4px solid ${isSell ? "#ef4444" : "#3b82f6"}`,
-                background: isSell ? "rgba(239,68,68,0.06)" : "rgba(59,130,246,0.06)",
-                borderRadius: "0 8px 8px 0",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong>{isSell ? "🔴 M15 Supply Zone (Sell)" : "🔵 M15 Demand Zone (Buy)"}</strong>
-                  <span className={`badge small ${inside ? "badge-accent" : "badge-neutral"}`}>
-                    {inside ? "Inside zone" : "Outside zone"}
-                  </span>
-                </div>
-                <div>Range: <strong>{price(z.bottom)} – {price(z.top)}</strong></div>
-                <div className="muted">Distance to edge: <strong>{distanceToEdge(z)}</strong></div>
-                {z.swing && (
-                  <div className="muted">
-                    Broke swing {isSell ? "low" : "high"} at {price(z.swing.price)}
-                    {z.swing.confirmed && ` (confirmed ${displayTime(z.swing.confirmed)} MYT)`}
-                  </div>
-                )}
-                <div className="muted">
-                  Created {displayTime(z.created)} MYT · {z.invalidated ? (
-                    <span className="warn">Invalidated {displayTime(z.invalidated)} MYT</span>
-                  ) : `Expires ${displayTime(z.expired)} MYT`}
-                </div>
+      {/* 2. Zone Rationale - Compact (Only Nearest Sell & Nearest Buy, secondary collapsed) */}
+      <details className="insight-details" open>
+        <summary>Zone Rationale / Rasional Zon</summary>
+        <div style={{ display: "grid", gap: 5, marginTop: 6 }}>
+          {nearestSell && (
+            <div className="compact-zone-item sell">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span><strong className="warn">🔴 M15 Supply:</strong> {price(nearestSell.bottom)} – {price(nearestSell.top)}</span>
+                <span className="small muted">{distanceToEdge(nearestSell)}</span>
               </div>
-            );
-          }) : <p className="small muted">No active M15 liquidity zones found.</p>}
+            </div>
+          )}
+          {nearestBuy && (
+            <div className="compact-zone-item buy">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span><strong className="good">🟢 M15 Demand:</strong> {price(nearestBuy.bottom)} – {price(nearestBuy.top)}</span>
+                <span className="small muted">{distanceToEdge(nearestBuy)}</span>
+              </div>
+            </div>
+          )}
+          {!nearestSell && !nearestBuy && (
+            <p className="small muted">No active liquidity zones near price.</p>
+          )}
+
+          {secondaryZones.length > 0 && (
+            <details className="secondary-zones-accordion" style={{ borderTop: "none", marginTop: 2 }}>
+              <summary className="small muted" style={{ paddingBlock: 2 }}>+{secondaryZones.length} secondary zones</summary>
+              <div style={{ display: "grid", gap: 3, marginTop: 2 }}>
+                {secondaryZones.map(z => (
+                  <div key={z.id} className="small muted" style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>{z.direction === "SELL" ? "🔴 Sell" : "🟢 Buy"}: {price(z.bottom)}–{price(z.top)}</span>
+                    <span>{distanceToEdge(z)}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </details>
 
-      <details className="insight-details" open><summary>Action & Validation / Pelan Tindakan & Validasi</summary>
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <strong>Status:</strong> {stepBadge(nextStep)}
+      {/* 3. Action & Validation - Compact */}
+      <details className="insight-details" open>
+        <summary>Action & Validation / Pelan Tindakan & Validasi</summary>
+        <div style={{ marginTop: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span className="small"><strong>Status:</strong></span>
+            {stepBadge(nextStep)}
           </div>
-          {reason && <p className="small" style={{ marginTop: 6 }}>{reason}</p>}
-
-          {rejection && (
-            <div className="small" style={{ marginTop: 8, padding: 8, background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>
-              <strong>M5 Rejection Confirmed</strong> at {displayTime(rejection.time)} MYT
-              <div className="muted">High {price(rejection.high)} · Low {price(rejection.low)} · Close {price(rejection.close)}</div>
-            </div>
-          )}
-
-          {trigger && (
-            <div className="small" style={{ marginTop: 6, padding: 8, background: "rgba(59,130,246,0.08)", borderRadius: 6, border: "1px solid rgba(59,130,246,0.2)" }}>
-              <strong>M1 Entry Trigger</strong> at {displayTime(trigger.time)} MYT
-              <div className="muted">Close {price(trigger.close)} broke 3-candle reference</div>
-            </div>
-          )}
+          {reason && <p className="small muted" style={{ marginTop: 4, lineHeight: 1.35 }}>{reason}</p>}
 
           {candidate && (
-            <div className="small" style={{ marginTop: 8, padding: 10, background: "rgba(34,197,94,0.08)", borderRadius: 8, border: "1px solid rgba(34,197,94,0.3)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <strong>ACTIONABLE ENTRY BAND</strong>
-                <span className="badge badge-positive small">{candidate.direction}</span>
+            <div className="compact-candidate-card" style={{ marginTop: 6, padding: "6px 8px", background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.25)", borderRadius: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "0.8125rem" }}>
+                <span>ENTRY BAND:</span>
+                <span className="good">{price(candidate.entry[0])} – {price(candidate.entry[1])}</span>
               </div>
-              <div style={{ fontSize: "1rem", fontWeight: 700, margin: "4px 0" }}>
-                {price(candidate.entry[0])} – {price(candidate.entry[1])}
+              <div className="small muted" style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                <span>SL: <strong className="warn">{price(candidate.stop)}</strong></span>
+                <span>TP1: <strong className="good">{price(candidate.targets[0])}</strong></span>
               </div>
-              <div>Natural Stop: <strong className="warn">{price(candidate.stop)}</strong></div>
-              <div>Targets: <strong className="good">TP1 {price(candidate.targets[0])} (1.0R)</strong> · <strong className="good">TP2 {price(candidate.targets[1])} (1.5R)</strong></div>
-              <div className="muted">Max Spread: {candidate.max_spread?.toFixed(2) ?? "–"} · Max Hold: {candidate.hold_seconds ? Math.round(candidate.hold_seconds / 60) : "–"}m</div>
             </div>
-          )}
-
-          {h1.direction === "neutral" && zones.length > 0 && (
-            <p className="small muted" style={{ marginTop: 8 }}>
-              H1 structure is currently neutral. Zones remain active for observation, but live entry requires confirmed H1 directional bias.
-            </p>
           )}
         </div>
       </details>

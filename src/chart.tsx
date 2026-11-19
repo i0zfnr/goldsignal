@@ -33,11 +33,9 @@ export function Chart({
   const closed = useRef<{ start: number; end: number; fill: number; stop: number; target: number } | null>(null);
   const scaleRange = useRef<number[]>([]);
   const liveLines = useRef<IPriceLine[]>([]);
-  const zoneLines = useRef<IPriceLine[]>([]);
-  const entryBandLines = useRef<IPriceLine[]>([]);
   const [palette, setPalette] = useState(0);
 
-  const zonesToRender = (b_analysis?.zones ?? []).slice(0, 4);
+  const zonesToRender = (b_analysis?.zones ?? []).slice(0, 5);
   const candidate = b_analysis?.candidate;
 
   useEffect(() => {
@@ -110,9 +108,9 @@ export function Chart({
       const height = c.panes()[0].getHeight();
       const inset = c.priceScale("right").width();
 
-      // Position zone overlays inside the chart
+      // Position zone boxes inside the chart (matching Image 2 & Image 3)
       if (zonesOverlayRef.current) {
-        const zoneEls = zonesOverlayRef.current.querySelectorAll<HTMLDivElement>(".zone-box");
+        const zoneEls = zonesOverlayRef.current.querySelectorAll<HTMLDivElement>(".zone-band");
         zoneEls.forEach(el => {
           const topVal = Number(el.dataset.top);
           const botVal = Number(el.dataset.bottom);
@@ -123,9 +121,9 @@ export function Chart({
             el.style.display = "none";
             return;
           }
-          el.style.display = "block";
+          el.style.display = "flex";
           const start = Math.max(0, topY);
-          const size = Math.max(2, Math.min(height, botY) - start);
+          const size = Math.max(8, Math.min(height, botY) - start);
           el.style.top = `${start}px`;
           el.style.height = `${size}px`;
           el.style.right = `${inset}px`;
@@ -142,9 +140,9 @@ export function Chart({
           if (topY == null || botY == null) {
             bandEl.style.display = "none";
           } else {
-            bandEl.style.display = "block";
+            bandEl.style.display = "flex";
             const start = Math.max(0, topY);
-            const size = Math.max(2, Math.min(height, botY) - start);
+            const size = Math.max(8, Math.min(height, botY) - start);
             bandEl.style.top = `${start}px`;
             bandEl.style.height = `${size}px`;
             bandEl.style.right = `${inset}px`;
@@ -247,16 +245,13 @@ export function Chart({
     const current = state.current;
     if (!current) return;
     current.lines.forEach(line => current.series.removePriceLine(line));
-    zoneLines.current.forEach(line => current.series.removePriceLine(line));
-    entryBandLines.current.forEach(line => current.series.removePriceLine(line));
     current.lines = [];
-    zoneLines.current = [];
-    entryBandLines.current = [];
 
     closed.current = fill != null && filledAt !== undefined && closedAt !== undefined &&
       initialStop !== undefined && finalTarget !== undefined
       ? { start: filledAt, end: closedAt, fill, stop: initialStop, target: finalTarget } : null;
 
+    // Only active signal entry/stop/target lines are drawn on series
     const levels: [string, number | undefined, string][] = [
       ["Entry high", entryHigh, chartColor("--gold")], ["Entry low", entryLow, chartColor("--gold")],
       ["SL", stop, chartColor("--sell")],
@@ -273,34 +268,14 @@ export function Chart({
       }
     }
 
-    // Only place price lines for the nearest sell and nearest buy zone to avoid price-axis clutter
+    // Push nearest zone prices to autoscale range so chart keeps active zones in view,
+    // but DO NOT add any price lines to the series (no confusing lines across candles!)
     const keyZones = [b_analysis?.nearest_sell, b_analysis?.nearest_buy].filter(Boolean) as BZone[];
     for (const z of keyZones) {
-      const isSell = z.direction === "SELL";
-      const color = isSell ? chartColor("--sell") : chartColor("--buy");
       scaleRange.current.push(z.top, z.bottom);
-      // Clean thin price lines without titles on canvas
-      zoneLines.current.push(current.series.createPriceLine({
-        price: z.top, color, title: "", lineWidth: 1, lineStyle: LineStyle.Solid,
-        axisLabelVisible: true, axisLabelTextColor: "#ffffff",
-      }));
-      zoneLines.current.push(current.series.createPriceLine({
-        price: z.bottom, color, title: "", lineWidth: 1, lineStyle: LineStyle.Solid,
-        axisLabelVisible: true, axisLabelTextColor: "#ffffff",
-      }));
     }
-
     if (candidate?.entry) {
-      const entry = candidate.entry;
-      entryBandLines.current.push(current.series.createPriceLine({
-        price: entry[0], color: chartColor("--gold"), title: "", lineWidth: 1, lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true, axisLabelTextColor: "#000000",
-      }));
-      entryBandLines.current.push(current.series.createPriceLine({
-        price: entry[1], color: chartColor("--gold"), title: "", lineWidth: 1, lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true, axisLabelTextColor: "#000000",
-      }));
-      scaleRange.current.push(...entry);
+      scaleRange.current.push(...candidate.entry);
     }
   }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget, b_analysis, palette]);
 
@@ -334,26 +309,23 @@ export function Chart({
         aria-label={`XAUUSD ${frame} candlestick chart. Exact signal levels are listed below.`}
       />
 
-      {/* Katana-style clean zone overlay inside chart canvas */}
+      {/* Red SELL and Green BUY boxes inside chart canvas (matching Image 2 & 3, NO confusing lines) */}
       <div ref={zonesOverlayRef} className="zones-overlay" aria-hidden="true">
         {zonesToRender.map((z: BZone) => {
           const isSell = z.direction === "SELL";
           return (
             <div
               key={z.id}
-              className={`zone-box ${isSell ? "sell-zone" : "buy-zone"}`}
+              className={`zone-band ${isSell ? "sell-band" : "buy-band"}`}
               data-top={z.top}
               data-bottom={z.bottom}
             >
-              <div className="zone-tag">
-                <span className="zone-pin">📍</span>
-                <span className="zone-title">
-                  {isSell ? "SELL ZONE: " : "BUY ZONE: "}
-                  {z.bottom.toFixed(2)} – {z.top.toFixed(2)}
-                </span>
-                <span className="zone-desc">
-                  ({isSell ? "Secondary Liquidity Zone" : "Demand Order Block"})
-                </span>
+              <div className={`zone-box-card ${isSell ? "sell-box" : "buy-box"}`}>
+                <span className="zone-box-type">{isSell ? "SELL SIDE LIQ." : "BUY SIDE LIQ."}</span>
+                <span className="zone-box-sep">|</span>
+                <span className="zone-box-range">{z.bottom.toFixed(2)} – {z.top.toFixed(2)}</span>
+                <span className="zone-box-sep">|</span>
+                <span className="zone-box-tag">FRESH</span>
               </div>
             </div>
           );
@@ -365,8 +337,8 @@ export function Chart({
             data-top={candidate.entry[1]}
             data-bottom={candidate.entry[0]}
           >
-            <div className="entry-band-tag">
-              <span>⚡ Entry band: {candidate.entry[0].toFixed(2)} – {candidate.entry[1].toFixed(2)}</span>
+            <div className="entry-band-card">
+              <span>⚡ ENTRY BAND | {candidate.entry[0].toFixed(2)} – {candidate.entry[1].toFixed(2)}</span>
             </div>
           </div>
         )}

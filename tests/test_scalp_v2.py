@@ -214,27 +214,42 @@ def test_neutral_h1_blocks_entry_ready():
     assert report_h1["candidate"] is None
 
 
-def test_strategy_b_config_endpoint(db):
+def test_strategy_b_config_endpoint(db, monkeypatch):
     from fastapi.testclient import TestClient
+    from cryptography.fernet import Fernet
     from goldsignal.api import app
+    from goldsignal.access import password_hash
 
-    with TestClient(app) as client:
-        # Default get
-        res = client.get("/api/strategy-b/config")
+    password = "fixture-admin-password"
+    salt = "00112233445566778899aabbccddeeff"
+    monkeypatch.setenv("ADMIN_EMAIL", "fixture@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", f"{salt}:{password_hash(password, salt)}")
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
+
+    with TestClient(app) as operator, TestClient(app) as viewer:
+        # Non-admin cannot modify setting
+        assert viewer.put("/api/admin/strategy-b/config", json={"mtf": "H1"}).status_code == 403
+
+        # Admin logs in
+        login = operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
+        assert login.status_code == 200
+
+        # Admin reads setting
+        res = operator.get("/api/strategy-b/config")
         assert res.status_code == 200
         assert res.json()["mtf"] in ("M15", "H1")
 
-        # Toggle to H1
-        put_h1 = client.put("/api/strategy-b/config", json={"mtf": "H1"})
+        # Admin toggles to H1
+        put_h1 = operator.put("/api/admin/strategy-b/config", json={"mtf": "H1"})
         assert put_h1.status_code == 200
         assert put_h1.json()["mtf"] == "H1"
 
         # Verify get returns H1
-        res_h1 = client.get("/api/strategy-b/config")
+        res_h1 = operator.get("/api/strategy-b/config")
         assert res_h1.json()["mtf"] == "H1"
 
-        # Toggle back to M15
-        put_m15 = client.put("/api/strategy-b/config", json={"mtf": "M15"})
+        # Admin toggles back to M15
+        put_m15 = operator.put("/api/admin/strategy-b/config", json={"mtf": "M15"})
         assert put_m15.status_code == 200
         assert put_m15.json()["mtf"] == "M15"
 

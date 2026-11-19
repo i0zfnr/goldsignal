@@ -455,9 +455,9 @@ def get_strategy_b_config(request: Request, response: Response):
         return {"mtf": mtf, "version": STRATEGY_B_VERSION}
 
 
-@app.put("/api/strategy-b/config")
+@app.put("/api/admin/strategy-b/config")
 def set_strategy_b_config(body: StrategyBConfig, request: Request, response: Response):
-    get_id(request, response)
+    admin(request)
     with transaction() as store:
         existing = store.get("settings", "strategy_b") or {}
         store.put("settings", "strategy_b", {**existing, "mtf": body.mtf})

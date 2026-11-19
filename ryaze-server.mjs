@@ -14,7 +14,7 @@ const nonces = new Map();
 const routes = new Set([
   "GET /api/dashboard", "GET /api/performance", "GET /api/sessions", "POST /api/lot-size",
   "GET /api/pnl", "PUT /api/pnl", "DELETE /api/pnl",
-  "GET /api/strategy-b/config", "PUT /api/strategy-b/config",
+  "GET /api/strategy-b/config", "PUT /api/admin/strategy-b/config",
   "PUT /api/push", "DELETE /api/push",
   "GET /api/viewer-profile", "PUT /api/viewer-profile",
   "POST /api/push/status", "POST /api/push/test",

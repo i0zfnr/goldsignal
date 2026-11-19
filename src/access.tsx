@@ -220,6 +220,8 @@ function CrewCard({ row }: { row: WorkerRow }) {
 function WorkerStatus() {
   const [report, setReport] = useState<WorkerReport | null>(null);
   const [error, setError] = useState("");
+  const [bMtf, setBMtf] = useState<"M15" | "H1">("M15");
+  const [bMtfBusy, setBMtfBusy] = useState(false);
 
   async function refresh() {
     try {
@@ -231,9 +233,29 @@ function WorkerStatus() {
   }
   useEffect(() => {
     void refresh();
+    api<{ mtf: "M15" | "H1" }>("/api/strategy-b/config")
+      .then(res => setBMtf(res.mtf))
+      .catch(() => {});
     const timer = setInterval(() => void refresh(), 5000);
     return () => clearInterval(timer);
   }, []);
+
+  async function updateBMtf(mtf: "M15" | "H1") {
+    if (bMtfBusy || mtf === bMtf) return;
+    setBMtfBusy(true);
+    try {
+      await api("/api/admin/strategy-b/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mtf }),
+      });
+      setBMtf(mtf);
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setBMtfBusy(false);
+    }
+  }
 
   const age = (value: number | null) => value == null ? "–" : `${value}s`;
   return <section className="panel access-panel" aria-labelledby="worker-status-title">
@@ -266,6 +288,34 @@ function WorkerStatus() {
             <strong>{lane.label}</strong>
             <Badge tone={active ? "positive" : "neutral"}>{active ? "Active" : lane.id === "C" ? "Reserved" : "Waiting"}</Badge>
           </div>
+          {lane.id === "B" && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, margin: "6px 0 12px", padding: "8px 12px", background: "var(--raised)", border: "1px solid var(--line)", borderRadius: 8 }}>
+              <div>
+                <strong className="small" style={{ display: "block" }}>Kaze Strategy B Direction Filter:</strong>
+                <span className="small muted">Configure whether Kaze evaluates M15 intraday swings or H1 macro structure.</span>
+              </div>
+              <div className="segment-group" style={{ gap: 2 }}>
+                <button
+                  type="button"
+                  className={bMtf === "M15" ? "primary small" : "small"}
+                  style={{ minHeight: 28, padding: "2px 10px", fontSize: ".75rem" }}
+                  disabled={bMtfBusy}
+                  onClick={() => void updateBMtf("M15")}
+                >
+                  M15 (Active Scalp)
+                </button>
+                <button
+                  type="button"
+                  className={bMtf === "H1" ? "primary small" : "small"}
+                  style={{ minHeight: 28, padding: "2px 10px", fontSize: ".75rem" }}
+                  disabled={bMtfBusy}
+                  onClick={() => void updateBMtf("H1")}
+                >
+                  H1 (Macro Trend)
+                </button>
+              </div>
+            </div>
+          )}
           <div className="crew-grid">
             {lane.stages.map(row => <CrewCard row={row} key={row.name} />)}
           </div>
