@@ -18,6 +18,10 @@ export type Signal = {
 };
 type News = { title: string; time: number; source: string; url: string | null; first_seen?: number; impact?: "high" | "medium";
   actual?: string; forecast?: string; previous?: string };
+export type BiasReading = {
+  direction: string; high_at?: number | null; low_at?: number | null; highs: number[]; lows: number[];
+};
+
 export type BZone = {
   id: string; direction: string; top: number; bottom: number;
   created: number; invalidated?: number | null; expired: number;
@@ -26,8 +30,11 @@ export type BZone = {
 
 export type BAnalysis = {
   version: string; now: number; price: number;
-  h1: { direction: string; high_at?: number | null; low_at?: number | null; highs: number[]; lows: number[] };
-  m15: { direction: string; high_at?: number | null; low_at?: number | null; highs: number[]; lows: number[] };
+  h1: BiasReading;
+  m30?: BiasReading;
+  m15: BiasReading;
+  m5?: BiasReading;
+  tf_bias?: Record<"M5" | "M15" | "M30" | "H1", "bullish" | "bearish" | "neutral">;
   zones: BZone[];
   nearest_sell?: BZone | null;
   nearest_buy?: BZone | null;

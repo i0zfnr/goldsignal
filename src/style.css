@@ -534,6 +534,173 @@ footer a { color: inherit; }
 .buy-zone-shade { background: rgba(59, 130, 246, 0.12); border-block: 1px solid rgba(59, 130, 246, 0.45); }
 .entry-band-shade { background: rgba(234, 179, 8, 0.14); border-block: 1px dashed rgba(234, 179, 8, 0.6); }
 
+/* --- Katana AI SMC Engine Chart Styles --- */
+.chart-panel { padding: 0 !important; background: transparent !important; border: 0 !important; }
+.katana-chart-wrapper {
+  display: flex; flex-direction: column; width: 100%; min-width: 0;
+  background: #0b0c13; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius);
+  overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+.katana-chart-header {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px 14px; padding: 10px 16px; background: #10121c; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.katana-header-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.katana-live-badge { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #f1f5f9; letter-spacing: 0.04em; }
+.katana-live-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #10b981;
+  box-shadow: 0 0 8px #10b981; animation: katana-dot-pulse 2s infinite;
+}
+@keyframes katana-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+.katana-tf-group { display: inline-flex; gap: 2px; padding: 2px; background: rgba(0, 0, 0, 0.4); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06); }
+.katana-tf-btn {
+  border: 0; background: transparent; color: #94a3b8; font-size: 0.75rem; font-weight: 600;
+  padding: 4px 9px; border-radius: 6px; cursor: pointer; min-height: 28px; transition: all 120ms ease;
+}
+.katana-tf-btn:hover { color: #ffffff; background: rgba(255, 255, 255, 0.06); }
+.katana-tf-btn.active {
+  background: #6366f1; color: #ffffff; box-shadow: 0 2px 10px rgba(99, 102, 241, 0.45);
+}
+.katana-header-center { display: flex; align-items: center; gap: 10px; }
+.katana-price-val { font-size: 1.35rem; font-weight: 750; color: #ffffff; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.katana-action-pill {
+  display: inline-flex; align-items: center; gap: 3px; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em;
+}
+.katana-action-pill.sell { background: rgba(239, 68, 68, 0.16); border: 1px solid rgba(239, 68, 68, 0.5); color: #f87171; }
+.katana-action-pill.buy { background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.5); color: #34d399; }
+.katana-action-conf { opacity: 0.85; font-size: 0.6875rem; }
+.katana-header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-inline-start: auto; }
+.katana-session-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.07em; color: #cbd5e1;
+}
+.session-indicator { width: 6px; height: 6px; border-radius: 50%; }
+.session-indicator.open { background: #10b981; box-shadow: 0 0 6px #10b981; }
+.session-indicator.closed { background: #64748b; }
+.katana-action-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 10px;
+  border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); background: #151724;
+  color: #cbd5e1; font-size: 0.75rem; font-weight: 550; cursor: pointer; text-decoration: none;
+}
+.katana-action-btn:hover { background: #1e2236; color: #ffffff; border-color: rgba(255, 255, 255, 0.18); }
+.katana-action-btn.active {
+  background: rgba(99, 102, 241, 0.16); border-color: #6366f1; color: #a5b4fc;
+}
+
+/* Katana Bias Strip */
+.katana-bias-strip {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  background: #0e0f17; border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  overflow-x: auto; scrollbar-width: none;
+}
+.katana-bias-strip::-webkit-scrollbar { display: none; }
+.katana-bias-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px;
+  background: #13141f; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap; flex-shrink: 0;
+}
+.katana-bias-tf { color: #64748b; font-weight: 700; font-size: 0.6875rem; }
+.katana-bias-val.bullish { color: #10b981; }
+.katana-bias-val.bearish { color: #ef4444; }
+.katana-bias-val.neutral { color: #64748b; }
+.katana-bias-dot { width: 6px; height: 6px; border-radius: 50%; }
+.katana-bias-dot.bullish { background: #10b981; box-shadow: 0 0 6px #10b981; }
+.katana-bias-dot.bearish { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+.katana-bias-dot.neutral { background: #64748b; }
+
+/* Katana Canvas & Overlays */
+.katana-chart-canvas {
+  position: relative; width: 100%; height: clamp(340px, 58vh, 600px);
+  background: #0c0d14; overflow: hidden;
+}
+.katana-chart-canvas .chart { width: 100%; height: 100%; }
+.katana-zones-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.katana-zone-box {
+  position: absolute; pointer-events: none; transition: top 80ms linear, height 80ms linear;
+}
+.katana-zone-box.sell-zone {
+  background: rgba(244, 63, 94, 0.12);
+  border-top: 1px solid rgba(244, 63, 94, 0.75);
+  border-bottom: 1px solid rgba(244, 63, 94, 0.75);
+}
+.katana-zone-box.buy-zone {
+  background: rgba(59, 130, 246, 0.12);
+  border-top: 1px solid rgba(59, 130, 246, 0.75);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.75);
+}
+.katana-zone-tag {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 650; white-space: nowrap; max-width: calc(100% - 150px);
+  overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.sell-zone .katana-zone-tag {
+  background: rgba(185, 28, 28, 0.85); border: 1px solid rgba(244, 63, 94, 0.8); color: #ffffff;
+}
+.buy-zone .katana-zone-tag {
+  background: rgba(29, 78, 216, 0.85); border: 1px solid rgba(59, 130, 246, 0.8); color: #ffffff;
+}
+.katana-tag-pin { font-size: 10px; }
+.katana-tag-label { font-weight: 700; }
+.katana-tag-sub { opacity: 0.82; font-weight: 400; font-size: 10px; margin-left: 2px; }
+.katana-zone-edge-labels { position: absolute; right: 2px; inset-block: 0; pointer-events: none; }
+.katana-edge-pill {
+  position: absolute; right: 0; padding: 1px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.katana-edge-pill.top { top: -9px; }
+.katana-edge-pill.bot { bottom: -9px; }
+.katana-edge-pill.sell { background: #ef4444; color: #ffffff; }
+.katana-edge-pill.buy { background: #3b82f6; color: #ffffff; }
+
+.katana-entry-band-box {
+  position: absolute; pointer-events: none;
+  background: rgba(234, 179, 8, 0.14);
+  border-top: 1px dashed rgba(234, 179, 8, 0.85);
+  border-bottom: 1px dashed rgba(234, 179, 8, 0.85);
+}
+.katana-entry-band-tag {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  background: rgba(202, 138, 4, 0.9); color: #ffffff; border-radius: 999px;
+  padding: 2px 8px; font-size: 10px; font-weight: 700; white-space: nowrap;
+}
+
+/* Katana Chart Footer */
+.katana-chart-footer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 10px 16px; background: #0c0d14; border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.75rem; color: #94a3b8;
+}
+.katana-footer-zones { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.katana-footer-item { display: inline-flex; align-items: center; gap: 6px; font-weight: 550; }
+.katana-footer-item.sell { color: #f87171; }
+.katana-footer-item.buy { color: #60a5fa; }
+.footer-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.footer-dot.sell { background: #ef4444; }
+.footer-dot.buy { background: #3b82f6; }
+.pips-badge { opacity: 0.85; font-size: 0.6875rem; }
+.katana-footer-engine { margin-inline-start: auto; color: #64748b; font-size: 0.6875rem; font-weight: 500; }
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .katana-header-center { order: 3; width: 100%; justify-content: space-between; }
+  .katana-header-right { order: 2; margin-inline-start: auto; }
+  .katana-action-btn .btn-text { display: none; }
+}
+@media (max-width: 600px) {
+  .katana-chart-header { padding: 8px 10px; }
+  .katana-price-val { font-size: 1.15rem; }
+  .katana-tag-sub { display: none; }
+  .katana-chart-canvas { height: 360px; }
+  .katana-footer-engine { width: 100%; text-align: start; margin-inline-start: 0; }
+}
+
 .lot-stats { margin: 0 0 8px; }
 
 .badge-positive { --badge-ink: var(--buy); --badge-fill: color-mix(in srgb, var(--buy) 10%, var(--panel)); }

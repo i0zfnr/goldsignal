@@ -220,17 +220,36 @@ def analyze(snapshot):
     m15 = closed(snapshot.get("bars", []), 900, now)
     frames = snapshot.get("frames", {})
     h1 = closed(frames.get("H1", []), 3600, now)
+    m30 = closed(frames.get("M30", []), 1800, now)
     m5 = closed(frames.get("M5", []), 300, now)
     m1 = closed(frames.get("M1", []), 60, now)
-    h1_bias = bias(h1, period=3600) if len(h1) >= 2 * PARAMS["swing"] + 2 else dict(direction="neutral")
-    m15_bias = bias(m15, period=900) if len(m15) >= 2 * PARAMS["swing"] + 2 else dict(direction="neutral")
+
+    def safe_bias(series, period):
+        if len(series) >= 2 * PARAMS["swing"] + 2:
+            return bias(series, period=period)
+        if len(series) >= 2:
+            delta = series[-1]["close"] - series[0]["close"]
+            d = "bullish" if delta > 0.05 else "bearish" if delta < -0.05 else "neutral"
+            return dict(direction=d, high_at=series[-1]["time"], low_at=series[-1]["time"], highs=[], lows=[])
+        return dict(direction="neutral", high_at=None, low_at=None, highs=[], lows=[])
+
+    h1_bias = safe_bias(h1, 3600)
+    m30_bias = safe_bias(m30, 1800)
+    m15_bias = safe_bias(m15, 900)
+    m5_bias = safe_bias(m5, 300)
+
     all_zones = zones(m15, now)
     live_zones = active(all_zones, now, price)
     nearest_sell = next((row for row in live_zones if row["direction"] == "SELL"), None)
     nearest_buy = next((row for row in live_zones if row["direction"] == "BUY"), None)
 
     report = dict(
-        version=PARAMS["version"], now=now, price=price, h1=h1_bias, m15=m15_bias,
+        version=PARAMS["version"], now=now, price=price,
+        h1=h1_bias, m30=m30_bias, m15=m15_bias, m5=m5_bias,
+        tf_bias=dict(M5=m5_bias.get("direction", "neutral"),
+                     M15=m15_bias.get("direction", "neutral"),
+                     M30=m30_bias.get("direction", "neutral"),
+                     H1=h1_bias.get("direction", "neutral")),
         zones=live_zones[:6], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
         next_step="WAITING FOR H1 DIRECTION", reason=None,
         candidate=None, rejection=None, trigger=None, zone=None,

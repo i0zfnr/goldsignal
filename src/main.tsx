@@ -572,27 +572,24 @@ function App({ role, signOut, expired }: {
             </> : <EmptyState icon={<ChartCandlestick size={18} />}>{selected ? "Signal unavailable." : "Waiting for signal"}</EmptyState>}
           </section>
         <section className="panel chart-panel" aria-labelledby="chart-title">
-          <div className="chart-header">
-            <div><h2 id="chart-title">Price chart</h2><span className="muted small">{frame} candles · UTC</span></div>
-            <div className="quote">
-              <div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div>
-              <div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div>
-              <CandleClock frame={frame} open={data?.frame === frame ? cursor.open : undefined}
-                clock={data?.clock} receivedAt={cursor.receivedAt} status={error ? "STALE" : data?.status} />
-            </div>
-          </div>
-          <div className="chart-frames segment-group" role="group" aria-label="Chart timeframe">
-            {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {
-              if (value !== frame) {
-                cursor.revision = undefined;
-                setFrame(value);
-              }
-            }}>{value}</button>)}
-          </div>
-          <Chart key={frame} frame={frame} candles={data?.frame === frame ? data.candles : []} signal={signal ?? null}
+          <Chart
+            key={frame}
+            frame={frame}
+            candles={data?.frame === frame ? data.candles : []}
+            signal={signal ?? null}
             quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null}
-            b_analysis={data?.b_analysis ?? null} />
-          <div className="chart-footer"><span><i className="key entry" /> Entry zone</span><span><i className="key stop" /> Stop</span><span><i className="key target" /> Targets</span></div>
+            b_analysis={data?.b_analysis ?? null}
+            onFrameChange={f => {
+              if (f !== frame) {
+                cursor.revision = undefined;
+                setFrame(f);
+              }
+            }}
+            session={data?.session ?? null}
+            onRefresh={() => {
+              cursor.revision = undefined;
+            }}
+          />
         </section>
           <section className="panel side-card insight" id="insight" aria-labelledby="insight-title">
             <div className="panel-heading"><h2 id="insight-title">Analysis</h2>
