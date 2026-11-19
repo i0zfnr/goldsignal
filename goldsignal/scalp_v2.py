@@ -367,6 +367,11 @@ def analyze(snapshot, mtf="M15"):
             break
 
     if candidate_found and wanted == candidate_found["direction"]:
+        if now > candidate_found["expiry"]:
+            report["candidate"] = None
+            report["next_step"] = "EXPIRED"
+            report["reason"] = f"M1 confirmation window expired. Waiting for fresh M5 rejection."
+            return report
         report["candidate"] = candidate_found
         report["next_step"] = "ENTRY READY"
         report["reason"] = candidate_found["evidence"]["reason"]

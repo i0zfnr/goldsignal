@@ -239,18 +239,23 @@ def process(source, step, cursor, calendar, revision):
             if not store.get("demo_calendar", calendar_id):
                 store.put("demo_calendar", calendar_id, dict(observed_at=utc_now(), calendar=calendar))
         if "M5" in frames and "M1" in frames:
-            def recent(frame):
-                bars = {bar["time"]: bar for bar in store.chart(frame=frame, limit=12)}
-                bars.update({bar["time"]: bar for bar in frames[frame]})
-                return [bars[time] for time in sorted(bars)[-12:]]
+            def recent(frame, limit=12):
+                bars = {bar["time"]: bar for bar in store.chart(frame=frame, limit=limit)}
+                bars.update({bar["time"]: bar for bar in frames.get(frame, [])})
+                return [bars[time] for time in sorted(bars)[-limit:]]
             if STRATEGY_B_VERSION == "katana_v1" and "H1" in frames:
                 b_settings = store.get("settings", "strategy_b") or {}
                 b_mtf = b_settings.get("mtf") or STRATEGY_B_MTF
-                b_analysis = analyze_v2(snapshot, mtf=b_mtf)
+                b_frames = {f: recent(f, 250) for f in ("M1", "M5", "M30", "H1")}
+                b_bars_dict = {b["time"]: b for b in store.chart(limit=250)}
+                b_bars_dict.update({b["time"]: b for b in snapshot.get("bars", [])})
+                b_bars = [b_bars_dict[t] for t in sorted(b_bars_dict)[-250:]]
+                b_snapshot = {**snapshot, "bars": b_bars, "frames": b_frames}
+                b_analysis = analyze_v2(b_snapshot, mtf=b_mtf)
                 scalp = b_analysis.get("candidate")
                 scalp_scan = b_analysis.get("reason") or "Waiting for setup"
             else:
-                scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
+                scalp, scalp_scan = scalp_candidate(snapshot, recent("M5", 12), recent("M1", 12))
         mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
                          reason=scan.get("reason"), at=now)
         mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",

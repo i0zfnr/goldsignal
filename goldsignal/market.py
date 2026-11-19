@@ -185,6 +185,8 @@ class MT5:
     def chart_frames(self, cursor, now):
         frames = {}
         mt5 = self.mt5
+        if not hasattr(self, "frame_history"):
+            self.frame_history = {}
         for name, period in FRAMES.items():
             timeframe = getattr(mt5, f"TIMEFRAME_{name}")
             if name not in self.loaded_frames or cursor is None:
@@ -194,11 +196,17 @@ class MT5:
                                             datetime.fromtimestamp(cursor - period + self.offset, UTC),
                                             datetime.fromtimestamp(now + self.offset, UTC))
             if rows is not None and len(rows):
-                frames[name] = [
-                    bar(int(row["time"]) - self.offset, row["open"], row["high"], row["low"], row["close"])
-                    for row in rows
-                ]
+                history = self.frame_history.setdefault(name, {})
+                for row in rows:
+                    stamp = int(row["time"]) - self.offset
+                    history[stamp] = bar(stamp, row["open"], row["high"], row["low"], row["close"])
+                ordered = sorted(history)[-250:]
+                self.frame_history[name] = {k: history[k] for k in ordered}
+                frames[name] = [self.frame_history[name][k] for k in ordered]
                 self.loaded_frames.add(name)
+            elif name in self.frame_history:
+                ordered = sorted(self.frame_history[name])[-250:]
+                frames[name] = [self.frame_history[name][k] for k in ordered]
         return frames
 
     @staticmethod
