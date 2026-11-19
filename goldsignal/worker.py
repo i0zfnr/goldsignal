@@ -18,11 +18,13 @@ from .diagnostics import record
 from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .lifecycle import advance
 from .market import MT5, Replay
+from .range_fade import asian_range_candidate
 from .scalp import scalp_candidate
 from .scalp_v2 import analyze as analyze_v2
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
+from .telegram import format_entry, format_event, format_headsup, send_telegram
 from .workers import blank as blank_workers, mark as mark_worker, mark_lane as mark_lane_worker
 from . import demo_account
 
@@ -207,9 +209,12 @@ def record_event(store, signal, name, ts):
     for recipient, subscription in store.items("push"):
         if subscription:
             add_alert(store, recipient, signal, name, ts)
+    if name != "ENTRY":
+        send_telegram(format_event(signal, name, ts))
 
 
 def process(source, step, cursor, calendar, revision):
+    cycle_start = time.perf_counter()
     snapshot = source.read(cursor, step, utc_now())
     if demo_account.enabled():
         import hashlib
@@ -243,6 +248,7 @@ def process(source, step, cursor, calendar, revision):
                 bars = {bar["time"]: bar for bar in store.chart(frame=frame, limit=limit)}
                 bars.update({bar["time"]: bar for bar in frames.get(frame, [])})
                 return [bars[time] for time in sorted(bars)[-limit:]]
+            m5_recent = recent("M5", 250)
             if STRATEGY_B_VERSION == "katana_v1" and "H1" in frames:
                 b_settings = store.get("settings", "strategy_b") or {}
                 b_mtf = b_settings.get("mtf") or STRATEGY_B_MTF
@@ -260,7 +266,31 @@ def process(source, step, cursor, calendar, revision):
                          reason=scan.get("reason"), at=now)
         mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
                          reason=scalp_scan, at=now)
-        mark_lane_worker(workers, "C", "kaze", "disabled", reason="Not configured", at=now)
+
+        # Strategy C: Asian Range Fade (reserved / shadow)
+        range_cand = None
+        range_scan = "Reserved"
+        if "M5" in frames and "M1" in frames:
+            range_cand, range_scan = asian_range_candidate(snapshot, m5_recent, snapshot.get("bars", []))
+        for stage in ("kaze", "mizu", "nanao", "hikari"):
+            mark_lane_worker(workers, "C", stage, "disabled",
+                             reason="Not configured" if stage != "kaze" else f"Reserved ({range_scan})", at=now)
+
+        # Early Heads-up when M5 rejection occurs before M1 confirmation:
+        if b_analysis and b_analysis.get("rejection") and b_analysis.get("next_step") == "WAITING FOR M1 CONFIRMATION":
+            rej = b_analysis["rejection"]
+            zone = b_analysis.get("zone", {})
+            headsup_key = f"headsup:{zone.get('id', 'z')}:{rej['time']}"
+            if not store.get("alert", headsup_key):
+                store.put("alert", headsup_key, dict(
+                    id=headsup_key, profile="shared", signal=None, kind="HEADS_UP", time=now,
+                    valid_until=now + 300,
+                    title=f"XAUUSD {zone.get('direction', '')} · Heads-up (M5 Rejection)",
+                    body=f"M5 closed outside zone {zone.get('bottom', 0):.2f}–{zone.get('top', 0):.2f}. Waiting for M1 confirmation break.",
+                    url="/#signal", delivery="sent", attempts=1,
+                ))
+                send_telegram(format_headsup(zone.get("direction", "SELL"), zone, rej, now))
+
         pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
         for item in pending:
             item.setdefault("session", session_label(snapshot["now"]))
@@ -314,6 +344,9 @@ def process(source, step, cursor, calendar, revision):
                          "disabled" if provider == "rules" else (model[0] if model else "waiting"),
                          reason="Rules-only review" if provider == "rules" else (
                              model[1] if model else "Waiting for review"), at=now)
+    if b_analysis and b_analysis.get("next_step") == "WAITING FOR M1 CONFIRMATION":
+        mark_lane_worker(workers, "B", "nanao", "waiting",
+                         reason="Pre-warming AI review for zone rejection...", at=now)
     if reviewed and not DEMO:
         snapshot = source.read(cursor, step, utc_now())
     with transaction() as store:
@@ -358,6 +391,7 @@ def process(source, step, cursor, calendar, revision):
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
+                    send_telegram(format_entry(item, publish_time))
                     mark_lane_worker(workers, item.get("lane", "A"), "hikari", "published",
                                      reason=f"{item['direction']} {key}", at=now)
                     if item.get("strategy"):
@@ -370,13 +404,15 @@ def process(source, step, cursor, calendar, revision):
                 if workers["lanes"][lane]["stages"][stage]["status"] == "idle":
                     mark_lane_worker(workers, lane, stage, "waiting", reason="No candidate", at=now)
         for stage in ("kaze", "mizu", "nanao", "hikari"):
-            mark_lane_worker(workers, "C", stage, "disabled", reason="Not configured", at=now)
-        feed_reason = "Feed live" if not snapshot.get("closed") else "Market closed"
+            mark_lane_worker(workers, "C", stage, "disabled",
+                             reason="Not configured" if stage != "kaze" else f"Reserved ({range_scan})", at=now)
+        latency_ms = round((time.perf_counter() - cycle_start) * 1000, 1)
+        feed_reason = f"Feed {'live' if not snapshot.get('closed') else 'closed'} · {latency_ms}ms"
         mark_worker(workers, "idle", reason=feed_reason, at=now)
         state_payload = dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,
-                  workers=workers, error=None)
+                  workers=workers, latency_ms=latency_ms, error=None)
         if b_analysis:
             state_payload["b_analysis"] = b_analysis
         store.put("state", "market", state_payload)

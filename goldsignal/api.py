@@ -446,6 +446,50 @@ class StrategyBConfig(BaseModel):
     mtf: Literal["M15", "H1"]
 
 
+class TelegramConfig(BaseModel):
+    bot_token: str = Field(min_length=10, max_length=120)
+    chat_id: str = Field(min_length=3, max_length=60)
+    enabled: bool = True
+
+
+@app.get("/api/admin/telegram")
+def get_telegram_config(request: Request):
+    admin(request)
+    with transaction() as store:
+        saved = store.get("settings", "telegram") or {}
+    token = saved.get("bot_token") or os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = saved.get("chat_id") or os.getenv("TELEGRAM_CHAT_ID")
+    masked = f"{token[:6]}...{token[-4:]}" if token and len(token) > 10 else None
+    return {"configured": bool(token and chat_id), "enabled": bool(saved.get("enabled", True) if (token and chat_id) else False),
+            "chat_id": chat_id, "masked_token": masked}
+
+
+@app.put("/api/admin/telegram")
+def set_telegram_config(body: TelegramConfig, request: Request):
+    admin(request)
+    with transaction() as store:
+        store.put("settings", "telegram", body.model_dump())
+    return {"ok": True, "chat_id": body.chat_id, "enabled": body.enabled}
+
+
+@app.post("/api/admin/telegram/test")
+def test_telegram(request: Request):
+    admin(request)
+    from .telegram import send_telegram
+    now_str = datetime.fromtimestamp(utc_now(), MY).strftime("%d %b %Y, %H:%M:%S")
+    msg = (
+        f"🤖 <b>GOLDSIGNAL · TELEGRAM TEST</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Telegram channel alerts are connected!\n"
+        f"🕒 Time: {now_str} MYT\n"
+        f"⚡ Real-time signals, TP/SL updates & heads-up alerts will be posted here."
+    )
+    ok = send_telegram(msg)
+    if not ok:
+        raise HTTPException(400, "Telegram delivery failed. Check bot token and ensure bot is an admin in the channel.")
+    return {"ok": True}
+
+
 @app.get("/api/strategy-b/config")
 def get_strategy_b_config(request: Request, response: Response):
     get_id(request, response)

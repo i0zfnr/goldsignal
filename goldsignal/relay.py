@@ -17,6 +17,7 @@ ROUTES = {("GET", "/api/dashboard"), ("GET", "/api/performance"), ("GET", "/api/
           ("POST", "/api/lot-size"),
           ("GET", "/api/pnl"), ("PUT", "/api/pnl"), ("DELETE", "/api/pnl"),
           ("GET", "/api/strategy-b/config"), ("PUT", "/api/admin/strategy-b/config"),
+          ("GET", "/api/admin/telegram"), ("PUT", "/api/admin/telegram"), ("POST", "/api/admin/telegram/test"),
           ("GET", "/api/viewer-profile"), ("PUT", "/api/viewer-profile"),
           ("POST", "/api/push/status"), ("POST", "/api/push/test"),
           ("PUT", "/api/push"), ("DELETE", "/api/push"), ("GET", "/api/auth/session"),

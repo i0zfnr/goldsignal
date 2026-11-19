@@ -328,6 +328,86 @@ function WorkerStatus() {
 
 export type AdminView = typeof adminViews[number][0];
 
+function TelegramPanel({ action, busy }: { action: (w: () => Promise<void>) => void; busy: boolean }) {
+  const [tg, setTg] = useState<{ configured: boolean; enabled: boolean; chat_id: string | null; masked_token: string | null } | null>(null);
+  const [botToken, setBotToken] = useState("");
+  const [chatId, setChatId] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    api<{ configured: boolean; enabled: boolean; chat_id: string | null; masked_token: string | null }>("/api/admin/telegram")
+      .then(res => {
+        setTg(res);
+        if (res.chat_id) setChatId(res.chat_id);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    void action(async () => {
+      await api("/api/admin/telegram", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bot_token: botToken, chat_id: chatId, enabled: true }),
+      });
+      setMessage("Telegram settings saved!");
+      setBotToken("");
+      const res = await api<{ configured: boolean; enabled: boolean; chat_id: string | null; masked_token: string | null }>("/api/admin/telegram");
+      setTg(res);
+    });
+  }
+
+  async function test() {
+    setMessage("");
+    void action(async () => {
+      await api("/api/admin/telegram/test", { method: "POST" });
+      setMessage("Test message sent successfully to your Telegram channel!");
+    });
+  }
+
+  return (
+    <section className="panel access-panel" style={{ marginTop: 12 }}>
+      <PanelHeading title="Telegram Channel Delivery" as="h3">
+        <Badge tone={tg?.configured ? "positive" : "neutral"}>{tg?.configured ? "Connected" : "Not configured"}</Badge>
+      </PanelHeading>
+      <p className="muted small">Instant 0ms alert broadcast for entry ready signals, TP/SL lifecycle, and early M5 heads-up warnings.</p>
+      {tg?.configured && (
+        <p className="small good" style={{ margin: "6px 0" }}>
+          Active channel: <code>{tg.chat_id}</code> ({tg.masked_token})
+        </p>
+      )}
+      <form className="access-form" onSubmit={save} style={{ marginTop: 8 }}>
+        <label>Telegram Bot Token
+          <input
+            type="password"
+            value={botToken}
+            onChange={e => setBotToken(e.target.value)}
+            placeholder={tg?.masked_token ? `Saved (${tg.masked_token}). Enter new token to change.` : "e.g. 7891234567:AAH..."}
+            required={!tg?.configured}
+          />
+        </label>
+        <label>Telegram Channel / Group Chat ID
+          <input
+            type="text"
+            value={chatId}
+            onChange={e => setChatId(e.target.value)}
+            placeholder="e.g. @my_channel or -1001234567890"
+            required
+          />
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+          <button className="primary" type="submit" disabled={busy}>Save Telegram Settings</button>
+          {tg?.configured && (
+            <button type="button" disabled={busy} onClick={test}>Send Test Message to Channel</button>
+          )}
+        </div>
+      </form>
+      {message && <p className="small good" style={{ marginTop: 8 }}>{message}</p>}
+    </section>
+  );
+}
+
 export function AdminSettings({ view }: { view: AdminView | undefined }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newKey, setNewKey] = useState("");
@@ -422,6 +502,7 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
         </div>
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
+      <div hidden={view !== "admin-ai"}><TelegramPanel action={action} busy={busy} /></div>
       <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
       </> : !error && view !== "admin-errors" && <LoadingState>Loading settings…</LoadingState>}
       {view === "admin-errors" && <BackendLog />}
