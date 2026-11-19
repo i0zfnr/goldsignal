@@ -35,9 +35,8 @@ export function Chart({
   const liveLines = useRef<IPriceLine[]>([]);
   const [palette, setPalette] = useState(0);
 
-  // Render ONLY the primary active key zones: 1 Sell Supply + 1 Buy Demand
-  // Eliminates confusing stacks of 4-5 overlapping boxes!
-  const zonesToRender = [b_analysis?.nearest_sell, b_analysis?.nearest_buy].filter(Boolean) as BZone[];
+  // Render ONLY 2 or 3 high-confidence zones (max 3 total on chart)
+  const zonesToRender = (b_analysis?.zones ?? []).slice(0, 3);
   const candidate = b_analysis?.candidate;
 
   useEffect(() => {
@@ -336,9 +335,11 @@ export function Chart({
               <div className={`zone-box-card ${isSell ? "sell-box" : "buy-box"}`}>
                 <span className="zone-box-type">{isSell ? "SELL SIDE LIQ." : "BUY SIDE LIQ."}</span>
                 <span className="zone-box-sep">|</span>
-                <span className="zone-box-range">{z.bottom.toFixed(2)} – {z.top.toFixed(2)}</span>
-                <span className="zone-box-sep">|</span>
                 <span className="zone-box-tag">{z.mitigated ? "TESTED" : "FRESH"}</span>
+                <span className="zone-box-sep">|</span>
+                <span className="zone-box-power">POWER {z.power ?? 8}/10</span>
+                <span className="zone-box-sep">|</span>
+                <span className="zone-box-range">{z.bottom.toFixed(2)} – {z.top.toFixed(2)}</span>
               </div>
             </div>
           );

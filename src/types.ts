@@ -26,6 +26,8 @@ export type BZone = {
   id: string; direction: string; top: number; bottom: number;
   created: number; invalidated?: number | null; expired: number;
   mitigated?: number | null;
+  power?: number;
+  confidence?: "HIGH" | "MEDIUM";
   swing?: { price: number; time: number; confirmed?: number } | null;
 };
 

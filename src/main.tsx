@@ -158,7 +158,6 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
   const currentPrice = analysis.price;
   const nearestSell = analysis.nearest_sell;
   const nearestBuy = analysis.nearest_buy;
-  const secondaryZones = (analysis.zones ?? []).filter(z => z.id !== nearestSell?.id && z.id !== nearestBuy?.id);
 
   const biasLabel = (b: { direction: string }) => {
     if (b.direction === "bullish") return <span className="good font-semibold">Bullish</span>;
@@ -203,48 +202,32 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
         </p>
       </details>
 
-      {/* 2. Zone Rationale - Compact (Only Nearest Sell & Nearest Buy, secondary collapsed) */}
+      {/* 2. Zone Rationale - 2 or 3 High-Confidence Zones Only */}
       <details className="insight-details" open>
-        <summary>Zone Rationale / Rasional Zon</summary>
-        <div style={{ display: "grid", gap: 5, marginTop: 6 }}>
-          {nearestSell && (
-            <div className="compact-zone-item sell">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>
-                  <strong className="warn">🔴 M15 Supply:</strong> {price(nearestSell.bottom)} – {price(nearestSell.top)}
-                  <small style={{ marginLeft: 6, opacity: 0.85, fontSize: "0.75rem" }}>({nearestSell.mitigated ? "Tested" : "Fresh"})</small>
-                </span>
-                <span className="small muted">{distanceToEdge(nearestSell)}</span>
-              </div>
-            </div>
-          )}
-          {nearestBuy && (
-            <div className="compact-zone-item buy">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>
-                  <strong className="good">🟢 M15 Demand:</strong> {price(nearestBuy.bottom)} – {price(nearestBuy.top)}
-                  <small style={{ marginLeft: 6, opacity: 0.85, fontSize: "0.75rem" }}>({nearestBuy.mitigated ? "Tested" : "Fresh"})</small>
-                </span>
-                <span className="small muted">{distanceToEdge(nearestBuy)}</span>
-              </div>
-            </div>
-          )}
-          {!nearestSell && !nearestBuy && (
-            <p className="small muted">No active liquidity zones near price.</p>
-          )}
-
-          {secondaryZones.length > 0 && (
-            <details className="secondary-zones-accordion" style={{ borderTop: "none", marginTop: 2 }}>
-              <summary className="small muted" style={{ paddingBlock: 2 }}>+{secondaryZones.length} secondary zones</summary>
-              <div style={{ display: "grid", gap: 3, marginTop: 2 }}>
-                {secondaryZones.map(z => (
-                  <div key={z.id} className="small muted" style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>{z.direction === "SELL" ? "🔴 Sell" : "🟢 Buy"}: {price(z.bottom)}–{price(z.top)}</span>
-                    <span>{distanceToEdge(z)}</span>
+        <summary>Zone Rationale / Rasional Zon ({analysis.zones.length} High Confidence)</summary>
+        <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+          {analysis.zones.length > 0 ? (
+            analysis.zones.map(z => {
+              const isSell = z.direction === "SELL";
+              return (
+                <div key={z.id} className={`compact-zone-item ${isSell ? "sell" : "buy"}`}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>
+                      <strong className={isSell ? "warn" : "good"}>
+                        {isSell ? "🔴 M15 Supply" : "🟢 M15 Demand"}:
+                      </strong>{" "}
+                      {price(z.bottom)} – {price(z.top)}
+                      <small style={{ marginLeft: 6, opacity: 0.85, fontSize: "0.75rem" }}>
+                        ({z.mitigated ? "Tested" : "Fresh"} · Power {z.power ?? 8}/10)
+                      </small>
+                    </span>
+                    <span className="small muted">{distanceToEdge(z)}</span>
                   </div>
-                ))}
-              </div>
-            </details>
+                </div>
+              );
+            })
+          ) : (
+            <p className="small muted">No active high-confidence liquidity zones near price.</p>
           )}
         </div>
       </details>

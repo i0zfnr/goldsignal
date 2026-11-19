@@ -85,6 +85,11 @@ def zones(bars, now):
         created = bar["time"] + 900
         if created > now:
             continue
+        med_body = _median(_body(row) for row in prior)
+        disp_body = _body(bar)
+        disp_ratio = disp_body / med_body if med_body > 0 else 1.5
+        base_power = 7 + int((disp_ratio - 1.5) * 2)
+        power = min(10, max(7, base_power))
         if bar["close"] < bar["open"]:
             broken = [row for row in pending if row["kind"] == "low"
                       and row["confirmed"] <= bar["time"] and bar["close"] < row["price"] and row["index"] < index]
@@ -139,9 +144,12 @@ def zones(bars, now):
                     break
                 if later["low"] <= top and mitigated is None:
                     mitigated = later_close_time
+        final_power = max(5, power - 2) if mitigated else power
+        confidence = "HIGH" if final_power >= 7 else "MEDIUM"
         result.append(dict(
             id=f"z_{direction}_{bar['time']}", direction=direction, top=top, bottom=bottom,
             candle=bar["time"], created=created,
+            power=final_power, confidence=confidence,
             source=dict(time=source["time"], open=source["open"], high=source["high"],
                         low=source["low"], close=source["close"]),
             swing=dict(price=swing["price"], time=swing["time"], confirmed=swing["confirmed"]),
@@ -169,10 +177,39 @@ def deduplicate_zones(zones_):
 
 
 def active(zones_, now, price):
+    # Only active (un-invalidated, unexpired)
     rows = [row for row in zones_ if (row["invalidated"] is None or row["invalidated"] > now) and row["expired"] > now]
-    rows.sort(key=lambda row: abs(price - (row["top"] + row["bottom"]) / 2))
     rows = deduplicate_zones(rows)
-    return rows
+
+    def rank_key(r):
+        # Prioritize: 1. Unmitigated fresh (0 vs 1), 2. Higher power (-power), 3. Distance to price
+        return (
+            1 if r.get("mitigated") else 0,
+            -r.get("power", 7),
+            abs(price - (r["top"] + r["bottom"]) / 2)
+        )
+
+    sells = [r for r in rows if r["direction"] == "SELL"]
+    buys = [r for r in rows if r["direction"] == "BUY"]
+    sells.sort(key=rank_key)
+    buys.sort(key=rank_key)
+
+    # Return at most 2 or 3 high confidence zones (e.g. 1 Sell + 1 Buy + 1 best alternate)
+    selected = []
+    if sells and buys:
+        selected.append(sells[0])
+        selected.append(buys[0])
+        rem = sells[1:] + buys[1:]
+        if rem:
+            rem.sort(key=rank_key)
+            selected.append(rem[0])
+    elif sells:
+        selected = sells[:3]
+    elif buys:
+        selected = buys[:3]
+
+    selected.sort(key=lambda r: abs(price - (r["top"] + r["bottom"]) / 2))
+    return selected
 
 
 def _find_rejections(m5, zone, now):
@@ -295,7 +332,7 @@ def analyze(snapshot, mtf="M15"):
                      M15=m15_bias.get("direction", "neutral"),
                      M30=m30_bias.get("direction", "neutral"),
                      H1=h1_bias.get("direction", "neutral")),
-        zones=live_zones[:6], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
+        zones=live_zones[:3], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
         next_step=f"WAITING FOR {mtf} DIRECTION", reason=None,
         candidate=None, rejection=None, trigger=None, zone=None,
     )
