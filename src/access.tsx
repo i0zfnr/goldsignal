@@ -199,6 +199,24 @@ function workerClass(status: string) {
   return "idle";
 }
 
+function shortReason(value: string | null) {
+  if (!value) return null;
+  return value.length > 34 ? `${value.slice(0, 33)}…` : value;
+}
+
+function CrewCard({ row }: { row: WorkerRow }) {
+  const tone = workerClass(row.status);
+  return <article className={`crew-card crew-${tone}`} title={row.reason ?? row.role}>
+    <span className="crew-bubble">{shortReason(row.reason) ?? row.status}</span>
+    <div className={`crew-face face-${row.name}`} aria-hidden="true"><i /><i /><b /></div>
+    <strong>{row.label}</strong>
+    <small>{row.role}</small>
+    <span className={`crew-chip chip-${tone}`}>
+      {row.status}{row.age_seconds != null ? ` · ${row.age_seconds}s` : ""}
+    </span>
+  </article>;
+}
+
 function WorkerStatus() {
   const [report, setReport] = useState<WorkerReport | null>(null);
   const [error, setError] = useState("");
@@ -233,35 +251,25 @@ function WorkerStatus() {
         <div><dt>Spec age</dt><dd>{age(report.spec_age)}</dd></div>
         <div><dt>Market</dt><dd>{report.closed ? "Closed" : "Open"}</dd></div>
       </dl>
-      <div className="worker-kuro">
-        <div className={`worker-node worker-${workerClass(report.kuro.status)}`} title={report.kuro.reason ?? report.kuro.role}>
-          <span className="worker-pulse" aria-hidden="true" />
-          <strong>{report.kuro.label}</strong>
-          <small>{report.kuro.status}</small>
-        </div>
-        <p className="small muted">{report.kuro.reason ?? report.kuro.role}</p>
+      <div className="crew-head">
+        <strong>Crew</strong>
+        <span>{report.lanes.flatMap(lane => lane.stages).concat(report.kuro)
+          .filter(row => workerClass(row.status) === "live").length} live · {report.lanes.length} lanes</span>
+      </div>
+      <div className="crew-grid crew-kuro">
+        <CrewCard row={report.kuro} />
       </div>
       {report.lanes.map(lane => {
-        const last = [...lane.stages].filter(row => row.age_seconds != null)
-          .sort((a, b) => (a.age_seconds ?? 0) - (b.age_seconds ?? 0))[0] ?? lane.stages[0];
         const active = lane.stages.some(row => workerClass(row.status) === "live");
-        return <div className="worker-lane" key={lane.id}>
-          <div className="worker-lane-head">
+        return <section className="crew-lane" key={lane.id}>
+          <div className="crew-lane-head">
             <strong>{lane.label}</strong>
             <Badge tone={active ? "positive" : "neutral"}>{active ? "Active" : lane.id === "C" ? "Reserved" : "Waiting"}</Badge>
           </div>
-          <div className="worker-flow">
-            {lane.stages.map((row, index) => <div className="worker-flow-item" key={row.name}>
-              {index > 0 && <span className="worker-link" aria-hidden="true"><i /></span>}
-              <div className={`worker-node worker-${workerClass(row.status)}`} title={row.reason ?? row.role}>
-                <span className="worker-pulse" aria-hidden="true" />
-                <strong>{row.label}</strong>
-                <small>{row.status}</small>
-              </div>
-            </div>)}
+          <div className="crew-grid">
+            {lane.stages.map(row => <CrewCard row={row} key={row.name} />)}
           </div>
-          <p className="small muted">{last.label} Â· {last.reason ?? "â€“"}</p>
-        </div>;
+        </section>;
       })}
       <p className="small muted">Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C is reserved until it has its own evidence.</p>
     </>}
