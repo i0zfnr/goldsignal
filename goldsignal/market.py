@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from typing import Protocol
 
-from .config import BROKER_HOURS, NY, SYMBOL, UTC, broker_windows
+from .config import BROKER_HOURS, NY, SYMBOL, UTC, broker_windows, utc_now
 from .strategy import PATTERN_HISTORY
 
 MT5_HISTORY = PATTERN_HISTORY + 10
@@ -104,6 +104,20 @@ class MT5:
             raise ValueError("Set BROKER_HOURS from the exact broker symbol schedule")
 
     def read(self, cursor, step, now):
+        try:
+            return self._read(cursor, step, now)
+        except RuntimeError:
+            self.reset()
+            return self._read(cursor, step, utc_now())
+
+    def reset(self):
+        self.connected = False
+        try:
+            self.mt5.shutdown()
+        except Exception:
+            pass
+
+    def _read(self, cursor, step, now):
         mt5 = self.mt5
         try:
             if not self.connected:

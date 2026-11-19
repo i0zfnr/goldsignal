@@ -31,6 +31,13 @@ ENTRY_LIMIT_PER_HOUR = 2
 ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
 
 
+def failure_message(exc):
+    message = str(exc).splitlines()[0] if str(exc) else ""
+    if isinstance(exc, RuntimeError) and message.startswith(("MT5 ", "Demo feed account changed")):
+        return f"Worker cycle failed: {type(exc).__name__}: {message}"[:300]
+    return f"Worker cycle failed: {type(exc).__name__}. See the local worker log."
+
+
 class GeminiTemporaryError(Exception):
     pass
 
@@ -350,9 +357,9 @@ def run():
                     if push_job:
                         push_job.result()
                     push_job = background.submit(send_pending, snapshot["now"])
-            except Exception:
+            except Exception as exc:
                 log.exception("Worker cycle failed")
-                record("Market worker", "Worker cycle failed.")
+                record("Market worker", failure_message(exc))
                 with transaction() as store:
                     prior = store.get("state", "market", {})
                     clock = utc_now()
