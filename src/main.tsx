@@ -572,6 +572,23 @@ function App({ role, signOut, expired }: {
             </> : <EmptyState icon={<ChartCandlestick size={18} />}>{selected ? "Signal unavailable." : "Waiting for signal"}</EmptyState>}
           </section>
         <section className="panel chart-panel" aria-labelledby="chart-title">
+          <div className="chart-header">
+            <div><h2 id="chart-title">Price chart</h2><span className="muted small">{frame} candles · UTC</span></div>
+            <div className="quote">
+              <div><span>Bid</span><strong>{price(data?.quote?.bid)}</strong></div>
+              <div><span>Ask</span><strong>{price(data?.quote?.ask)}</strong></div>
+              <CandleClock frame={frame} open={data?.frame === frame ? cursor.open : undefined}
+                clock={data?.clock} receivedAt={cursor.receivedAt} status={error ? "STALE" : data?.status} />
+            </div>
+          </div>
+          <div className="chart-frames segment-group" role="group" aria-label="Chart timeframe">
+            {frames.map(value => <button key={value} type="button" aria-pressed={frame === value} onClick={() => {
+              if (value !== frame) {
+                cursor.revision = undefined;
+                setFrame(value);
+              }
+            }}>{value}</button>)}
+          </div>
           <Chart
             key={frame}
             frame={frame}
@@ -579,17 +596,18 @@ function App({ role, signOut, expired }: {
             signal={signal ?? null}
             quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null}
             b_analysis={data?.b_analysis ?? null}
-            onFrameChange={f => {
-              if (f !== frame) {
-                cursor.revision = undefined;
-                setFrame(f);
-              }
-            }}
-            session={data?.session ?? null}
-            onRefresh={() => {
-              cursor.revision = undefined;
-            }}
           />
+          <div className="chart-footer">
+            <span><i className="key entry" /> Entry zone</span>
+            <span><i className="key stop" /> Stop</span>
+            <span><i className="key target" /> Targets</span>
+            {data?.b_analysis?.nearest_sell && (
+              <span><i className="key" style={{ background: "var(--sell)" }} /> M15 Sell zone ({price(data.b_analysis.nearest_sell.bottom)}–{price(data.b_analysis.nearest_sell.top)})</span>
+            )}
+            {data?.b_analysis?.nearest_buy && (
+              <span><i className="key" style={{ background: "var(--buy)" }} /> M15 Buy zone ({price(data.b_analysis.nearest_buy.bottom)}–{price(data.b_analysis.nearest_buy.top)})</span>
+            )}
+          </div>
         </section>
           <section className="panel side-card insight" id="insight" aria-labelledby="insight-title">
             <div className="panel-heading"><h2 id="insight-title">Analysis</h2>

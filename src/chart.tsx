@@ -3,7 +3,6 @@ import {
   CandlestickSeries, ColorType, createChart, LineStyle,
   type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp,
 } from "lightweight-charts";
-import { ExternalLink, Eye, RotateCw } from "lucide-react";
 import type { Candle, Frame, Signal, BAnalysis, BZone } from "./types";
 
 type ChartState = {
@@ -11,23 +10,20 @@ type ChartState = {
   data: Map<number, Candle>; last?: UTCTimestamp;
 };
 
+function chartColor(token: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+}
+
 const frameSeconds: Record<Frame, number> = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400 };
-const numberFmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const mytFmt = new Intl.DateTimeFormat("en-MY", {
-  timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
-});
 
 export function Chart({
-  candles, signal, frame, quote, b_analysis, onFrameChange, session, onRefresh,
+  candles, signal, frame, quote, b_analysis,
 }: {
   candles: Candle[];
   signal: Signal | null;
   frame: Frame;
-  quote: { bid: number; ask: number; time?: number } | null;
+  quote: { bid: number; ask: number } | null;
   b_analysis?: BAnalysis | null;
-  onFrameChange?: (f: Frame) => void;
-  session?: { open: boolean; active?: string[]; next?: string[] } | null;
-  onRefresh?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const zonesOverlayRef = useRef<HTMLDivElement>(null);
@@ -39,55 +35,42 @@ export function Chart({
   const liveLines = useRef<IPriceLine[]>([]);
   const zoneLines = useRef<IPriceLine[]>([]);
   const entryBandLines = useRef<IPriceLine[]>([]);
-  const [showZones, setShowZones] = useState(true);
+  const [palette, setPalette] = useState(0);
 
-  const zonesToRender = (b_analysis?.zones ?? []).slice(0, 5);
-  const price = quote ? (quote.bid + quote.ask) / 2 : (candles.at(-1)?.close ?? 0);
-  const nearestSell = b_analysis?.nearest_sell;
-  const nearestBuy = b_analysis?.nearest_buy;
-  const sellPips = nearestSell && price ? Math.max(0, Math.round(Math.abs(price - nearestSell.bottom) / 0.10 * 10) / 10) : null;
-  const buyPips = nearestBuy && price ? Math.max(0, Math.round(Math.abs(price - nearestBuy.top) / 0.10 * 10) / 10) : null;
-  const nowTs = quote?.time ?? Math.floor(Date.now() / 1000);
-  const updateTimeStr = mytFmt.format(nowTs * 1000);
-
-  // Direction badge next to price
+  const zonesToRender = (b_analysis?.zones ?? []).slice(0, 4);
   const candidate = b_analysis?.candidate;
-  const direction = candidate?.direction ?? (b_analysis?.h1.direction === "bearish" ? "SELL" : b_analysis?.h1.direction === "bullish" ? "BUY" : null);
 
   useEffect(() => {
     if (!host.current) return;
     const chart = createChart(host.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#0c0d14" },
-        textColor: "#94a3b8",
+        background: { type: ColorType.Solid, color: chartColor("--panel") },
+        textColor: chartColor("--muted"),
         attributionLogo: false,
-        fontFamily: "Geist, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-        fontSize: 11,
+        fontFamily: "Geist, Segoe UI, sans-serif",
+        fontSize: 12,
       },
       grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.03)" },
-        horzLines: { color: "rgba(255, 255, 255, 0.03)" },
+        vertLines: { color: chartColor("--grid") },
+        horzLines: { color: chartColor("--grid") },
       },
-      rightPriceScale: {
-        borderColor: "rgba(255, 255, 255, 0.08)",
-        scaleMargins: { top: 0.1, bottom: 0.1 },
-      },
+      rightPriceScale: { borderColor: chartColor("--line") },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: "rgba(255, 255, 255, 0.08)",
+        borderColor: chartColor("--line"),
         rightOffset: 6,
       },
       handleScroll: { vertTouchDrag: false },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#10b981",
-      downColor: "#ef4444",
+      upColor: chartColor("--buy"),
+      downColor: chartColor("--sell"),
       borderVisible: false,
-      wickUpColor: "#10b981",
-      wickDownColor: "#ef4444",
+      wickUpColor: chartColor("--buy"),
+      wickDownColor: chartColor("--sell"),
       lastValueVisible: false,
       priceLineVisible: false,
       autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
@@ -105,6 +88,21 @@ export function Chart({
 
     state.current = { chart, series, lines: [], data: new Map() };
 
+    function updateTheme() {
+      const borderColor = chartColor("--line");
+      const grid = chartColor("--grid");
+      const upColor = chartColor("--buy");
+      const downColor = chartColor("--sell");
+      chart.applyOptions({
+        layout: { background: { type: ColorType.Solid, color: chartColor("--panel") }, textColor: chartColor("--muted") },
+        grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+        rightPriceScale: { borderColor }, timeScale: { borderColor },
+      });
+      series.applyOptions({ upColor, downColor, wickUpColor: upColor, wickDownColor: downColor });
+      setPalette(v => v + 1);
+    }
+    window.addEventListener("goldsignal-theme", updateTheme);
+
     let animation = 0;
     function positionElements() {
       if (!state.current) return;
@@ -112,9 +110,9 @@ export function Chart({
       const height = c.panes()[0].getHeight();
       const inset = c.priceScale("right").width();
 
-      // Position zone overlays
+      // Position zone overlays inside the chart
       if (zonesOverlayRef.current) {
-        const zoneEls = zonesOverlayRef.current.querySelectorAll<HTMLDivElement>(".katana-zone-box");
+        const zoneEls = zonesOverlayRef.current.querySelectorAll<HTMLDivElement>(".zone-box");
         zoneEls.forEach(el => {
           const topVal = Number(el.dataset.top);
           const botVal = Number(el.dataset.bottom);
@@ -125,7 +123,7 @@ export function Chart({
             el.style.display = "none";
             return;
           }
-          el.style.display = showZones ? "block" : "none";
+          el.style.display = "block";
           const start = Math.max(0, topY);
           const size = Math.max(2, Math.min(height, botY) - start);
           el.style.top = `${start}px`;
@@ -135,7 +133,7 @@ export function Chart({
         });
 
         // Position candidate entry band
-        const bandEl = zonesOverlayRef.current.querySelector<HTMLDivElement>(".katana-entry-band-box");
+        const bandEl = zonesOverlayRef.current.querySelector<HTMLDivElement>(".entry-band-box");
         if (bandEl) {
           const topVal = Number(bandEl.dataset.top);
           const botVal = Number(bandEl.dataset.bottom);
@@ -144,7 +142,7 @@ export function Chart({
           if (topY == null || botY == null) {
             bandEl.style.display = "none";
           } else {
-            bandEl.style.display = showZones ? "block" : "none";
+            bandEl.style.display = "block";
             const start = Math.max(0, topY);
             const size = Math.max(2, Math.min(height, botY) - start);
             bandEl.style.top = `${start}px`;
@@ -190,12 +188,13 @@ export function Chart({
 
     animation = requestAnimationFrame(positionElements);
     return () => {
+      window.removeEventListener("goldsignal-theme", updateTheme);
       cancelAnimationFrame(animation);
       chart.remove();
       state.current = null;
       liveLines.current = [];
     };
-  }, [frame, showZones]);
+  }, [frame]);
 
   useEffect(() => {
     const current = state.current;
@@ -259,53 +258,51 @@ export function Chart({
       ? { start: filledAt, end: closedAt, fill, stop: initialStop, target: finalTarget } : null;
 
     const levels: [string, number | undefined, string][] = [
-      ["Entry high", entryHigh, "#eab308"], ["Entry low", entryLow, "#eab308"],
-      ["SL", stop, "#ef4444"],
-      ["TP1", stop === target1 ? undefined : target1, "#10b981"],
-      ["TP2", target2, "#10b981"], ["TP3", target3, "#10b981"],
+      ["Entry high", entryHigh, chartColor("--gold")], ["Entry low", entryLow, chartColor("--gold")],
+      ["SL", stop, chartColor("--sell")],
+      ["TP1", stop === target1 ? undefined : target1, chartColor("--buy")],
+      ["TP2", target2, chartColor("--buy")], ["TP3", target3, chartColor("--buy")],
     ];
     scaleRange.current = levels.flatMap(([, p]) => p === undefined ? [] : [p]);
     for (const [title, p, color] of levels) {
       if (p !== undefined) {
         current.lines.push(current.series.createPriceLine({
           price: p, color, title, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
-          axisLabelTextColor: "#ffffff",
+          axisLabelTextColor: chartColor("--chart-label"),
         }));
       }
     }
 
-    if (showZones && b_analysis?.zones) {
-      for (const z of b_analysis.zones.slice(0, 4)) {
-        const isSell = z.direction === "SELL";
-        const color = isSell ? "#ef4444" : "#3b82f6";
-        scaleRange.current.push(z.top, z.bottom);
-        // Clean price lines without canvas titles so axis displays clean badges without artifacts
-        zoneLines.current.push(current.series.createPriceLine({
-          price: z.top, color, title: "", lineWidth: 1, lineStyle: LineStyle.Solid,
-          axisLabelVisible: true, axisLabelTextColor: "#ffffff",
-          axisLabelColor: isSell ? "#b91c1c" : "#1d4ed8",
-        }));
-        zoneLines.current.push(current.series.createPriceLine({
-          price: z.bottom, color, title: "", lineWidth: 1, lineStyle: LineStyle.Solid,
-          axisLabelVisible: true, axisLabelTextColor: "#ffffff",
-          axisLabelColor: isSell ? "#b91c1c" : "#1d4ed8",
-        }));
-      }
+    // Only place price lines for the nearest sell and nearest buy zone to avoid price-axis clutter
+    const keyZones = [b_analysis?.nearest_sell, b_analysis?.nearest_buy].filter(Boolean) as BZone[];
+    for (const z of keyZones) {
+      const isSell = z.direction === "SELL";
+      const color = isSell ? chartColor("--sell") : chartColor("--buy");
+      scaleRange.current.push(z.top, z.bottom);
+      // Clean thin price lines without titles on canvas
+      zoneLines.current.push(current.series.createPriceLine({
+        price: z.top, color, title: "", lineWidth: 1, lineStyle: LineStyle.Solid,
+        axisLabelVisible: true, axisLabelTextColor: "#ffffff",
+      }));
+      zoneLines.current.push(current.series.createPriceLine({
+        price: z.bottom, color, title: "", lineWidth: 1, lineStyle: LineStyle.Solid,
+        axisLabelVisible: true, axisLabelTextColor: "#ffffff",
+      }));
     }
 
-    if (showZones && b_analysis?.candidate?.entry) {
-      const entry = b_analysis.candidate.entry;
+    if (candidate?.entry) {
+      const entry = candidate.entry;
       entryBandLines.current.push(current.series.createPriceLine({
-        price: entry[0], color: "#eab308", title: "", lineWidth: 1, lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true, axisLabelTextColor: "#000000", axisLabelColor: "#eab308",
+        price: entry[0], color: chartColor("--gold"), title: "", lineWidth: 1, lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true, axisLabelTextColor: "#000000",
       }));
       entryBandLines.current.push(current.series.createPriceLine({
-        price: entry[1], color: "#eab308", title: "", lineWidth: 1, lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true, axisLabelTextColor: "#000000", axisLabelColor: "#eab308",
+        price: entry[1], color: chartColor("--gold"), title: "", lineWidth: 1, lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true, axisLabelTextColor: "#000000",
       }));
       scaleRange.current.push(...entry);
     }
-  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget, b_analysis, showZones]);
+  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget, b_analysis, palette]);
 
   const bid = quote?.bid;
   const ask = quote?.ask;
@@ -318,189 +315,65 @@ export function Chart({
       return;
     }
     if (liveLines.current.length >= 2) {
-      liveLines.current[0].applyOptions({ price: bid });
-      liveLines.current[1].applyOptions({ price: ask });
+      liveLines.current[0].applyOptions({ price: bid, color: chartColor("--buy"), axisLabelTextColor: chartColor("--chart-label") });
+      liveLines.current[1].applyOptions({ price: ask, color: chartColor("--ask"), axisLabelTextColor: chartColor("--chart-label") });
       return;
     }
     liveLines.current = [
-      series.createPriceLine({ price: bid, title: "Bid", color: "#10b981", lineWidth: 1, axisLabelVisible: true, axisLabelTextColor: "#ffffff", axisLabelColor: "#059669" }),
-      series.createPriceLine({ price: ask, title: "Ask", color: "#f59e0b", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, axisLabelTextColor: "#ffffff", axisLabelColor: "#d97706" }),
+      series.createPriceLine({ price: bid, title: "Bid", color: chartColor("--buy"), lineWidth: 1, axisLabelVisible: true, axisLabelTextColor: chartColor("--chart-label") }),
+      series.createPriceLine({ price: ask, title: "Ask", color: chartColor("--ask"), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, axisLabelTextColor: chartColor("--chart-label") }),
     ];
-  }, [bid, ask]);
-
-  const activeSessionName = session?.open && session.active?.length ? session.active[0] : (session?.next?.length ? session.next[0] : "NEW YORK");
-  const tfList: Frame[] = ["M5", "M15", "M30", "H1"];
-  const biasTfList = ["M5", "M15", "M30", "H1"] as const;
+  }, [bid, ask, palette]);
 
   return (
-    <div className="katana-chart-wrapper">
-      {/* 1. Katana Chart Header */}
-      <div className="katana-chart-header">
-        <div className="katana-header-left">
-          <div className="katana-live-badge">
-            <span className="katana-live-dot" />
-            <span className="katana-live-title">LIVE CHART · XAUUSD</span>
-          </div>
-          <div className="katana-tf-group" role="group" aria-label="Timeframe">
-            {tfList.map(tf => (
-              <button
-                key={tf}
-                type="button"
-                className={`katana-tf-btn ${frame === tf ? "active" : ""}`}
-                onClick={() => onFrameChange?.(tf)}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-        </div>
+    <div className="chart-shell">
+      <div
+        ref={host}
+        className="chart"
+        role="img"
+        aria-label={`XAUUSD ${frame} candlestick chart. Exact signal levels are listed below.`}
+      />
 
-        <div className="katana-header-center">
-          <span className="katana-price-val">${numberFmt.format(price)}</span>
-          {direction && (
-            <span className={`katana-action-pill ${direction === "SELL" ? "sell" : "buy"}`}>
-              {direction === "SELL" ? "▼ SELL" : "▲ BUY"}
-              <span className="katana-action-conf"> (88%)</span>
-            </span>
-          )}
-        </div>
-
-        <div className="katana-header-right">
-          <div className="katana-session-badge">
-            <span className={`session-indicator ${session?.open ? "open" : "closed"}`} />
-            <span>{activeSessionName.toUpperCase()}</span>
-          </div>
-          <button
-            type="button"
-            className={`katana-action-btn ${showZones ? "active" : ""}`}
-            onClick={() => setShowZones(!showZones)}
-            title="Toggle Katana AI SMC Zones"
-          >
-            <Eye size={14} />
-            <span className="btn-text">Katana AI Zones</span>
-          </button>
-          <a
-            className="katana-action-btn tv-link"
-            href="https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open in TradingView"
-          >
-            <ExternalLink size={14} />
-            <span className="btn-text">TradingView</span>
-          </a>
-          <button
-            type="button"
-            className="katana-action-btn refresh-btn"
-            onClick={() => onRefresh?.()}
-            title="Refresh AI Analysis"
-          >
-            <RotateCw size={14} />
-            <span className="btn-text">Refresh AI</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Katana Multi-Timeframe Bias Strip */}
-      <div className="katana-bias-strip" role="region" aria-label="Multi-Timeframe Structure Bias">
-        {biasTfList.map(tf => {
-          const b = b_analysis?.tf_bias?.[tf] ?? "neutral";
-          const isBull = b === "bullish";
-          const isBear = b === "bearish";
+      {/* Katana-style clean zone overlay inside chart canvas */}
+      <div ref={zonesOverlayRef} className="zones-overlay" aria-hidden="true">
+        {zonesToRender.map((z: BZone) => {
+          const isSell = z.direction === "SELL";
           return (
-            <div key={tf} className={`katana-bias-chip ${b}`}>
-              <span className="katana-bias-tf">{tf}</span>
-              <span className={`katana-bias-val ${b}`}>
-                {isBull ? "BULL" : isBear ? "BEAR" : "NEUT"}
-              </span>
-              <span className={`katana-bias-dot ${b}`} />
+            <div
+              key={z.id}
+              className={`zone-box ${isSell ? "sell-zone" : "buy-zone"}`}
+              data-top={z.top}
+              data-bottom={z.bottom}
+            >
+              <div className="zone-tag">
+                <span className="zone-pin">📍</span>
+                <span className="zone-title">
+                  {isSell ? "SELL ZONE: " : "BUY ZONE: "}
+                  {z.bottom.toFixed(2)} – {z.top.toFixed(2)}
+                </span>
+                <span className="zone-desc">
+                  ({isSell ? "Secondary Liquidity Zone" : "Demand Order Block"})
+                </span>
+              </div>
             </div>
           );
         })}
-      </div>
 
-      {/* 3. Interactive Lightweight Chart Canvas & Overlays */}
-      <div className="chart-shell katana-chart-canvas">
-        <div
-          ref={host}
-          className="chart"
-          role="img"
-          aria-label={`XAUUSD ${frame} candlestick chart with Katana liquidity zones`}
-        />
-
-        {/* Zones & Entry Band HTML Overlays */}
-        <div ref={zonesOverlayRef} className="katana-zones-overlay" aria-hidden="true">
-          {zonesToRender.map((z: BZone) => {
-            const isSell = z.direction === "SELL";
-            return (
-              <div
-                key={z.id}
-                className={`katana-zone-box ${isSell ? "sell-zone" : "buy-zone"}`}
-                data-top={z.top}
-                data-bottom={z.bottom}
-              >
-                <div className="katana-zone-tag">
-                  <span className="katana-tag-pin">📍</span>
-                  <span className="katana-tag-label">
-                    {isSell ? "SELL ZONE: " : "BUY ZONE: "}
-                    {z.bottom.toFixed(2)} – {z.top.toFixed(2)}
-                  </span>
-                  <span className="katana-tag-sub">
-                    ({isSell ? "Secondary Liquidity Zone" : "Institutional Demand Order Block"})
-                  </span>
-                </div>
-                <div className="katana-zone-edge-labels">
-                  <span className={`katana-edge-pill top ${isSell ? "sell" : "buy"}`}>
-                    {isSell ? "SELL TOP: " : "BUY TOP: "}{z.top.toFixed(2)}
-                  </span>
-                  <span className={`katana-edge-pill bot ${isSell ? "sell" : "buy"}`}>
-                    BOT: {z.bottom.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-
-          {candidate?.entry && (
-            <div
-              className="katana-entry-band-box"
-              data-top={candidate.entry[1]}
-              data-bottom={candidate.entry[0]}
-            >
-              <div className="katana-entry-band-tag">
-                <span>⚡ ACTIONABLE ENTRY BAND: {candidate.entry[0].toFixed(2)} – {candidate.entry[1].toFixed(2)}</span>
-              </div>
+        {candidate?.entry && (
+          <div
+            className="entry-band-box"
+            data-top={candidate.entry[1]}
+            data-bottom={candidate.entry[0]}
+          >
+            <div className="entry-band-tag">
+              <span>⚡ Entry band: {candidate.entry[0].toFixed(2)} – {candidate.entry[1].toFixed(2)}</span>
             </div>
-          )}
-        </div>
-
-        {/* Trade execution boxes */}
-        <div ref={rewardBox} className="trade-box trade-reward" hidden aria-hidden="true"><span>{outcome}</span></div>
-        <div ref={riskBox} className="trade-box trade-risk" hidden aria-hidden="true" />
+          </div>
+        )}
       </div>
 
-      {/* 4. Katana Chart Footer */}
-      <div className="katana-chart-footer">
-        <div className="katana-footer-zones">
-          {nearestSell && (
-            <span className="katana-footer-item sell">
-              <span className="footer-dot sell" />
-              Zon SELL: {nearestSell.bottom.toFixed(2)} – {nearestSell.top.toFixed(2)}
-              {sellPips !== null && <span className="pips-badge"> ({sellPips} pips)</span>}
-            </span>
-          )}
-          {nearestBuy && (
-            <span className="katana-footer-item buy">
-              <span className="footer-dot buy" />
-              Zon BUY: {nearestBuy.bottom.toFixed(2)} – {nearestBuy.top.toFixed(2)}
-              {buyPips !== null && <span className="pips-badge"> ({buyPips} pips)</span>}
-            </span>
-          )}
-        </div>
-        <div className="katana-footer-engine">
-          <span className="katana-engine-text">⚡ Katana AI SMC Engine · Dikemaskini {updateTimeStr} (MYT)</span>
-        </div>
-      </div>
+      <div ref={rewardBox} className="trade-box trade-reward" hidden aria-hidden="true"><span>{outcome}</span></div>
+      <div ref={riskBox} className="trade-box trade-risk" hidden aria-hidden="true" />
     </div>
   );
 }
