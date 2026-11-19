@@ -76,8 +76,8 @@ def check(store, signal, owner, now, quote=None, spec=None):
                   quote=None, price=None, ratios=None, side="Ask" if signal and signal["direction"] == "BUY" else "Bid")
     if not signal:
         return {**result, "reason": "Signal not found"}
-    if signal.get("strategy") != "M5 setup / M1 entry":
-        return {**result, "reason": "This demo measures the frozen M5/M1 baseline only"}
+    if signal.get("strategy") not in ("M5 setup / M1 entry", "B · liquidity scalp"):
+        return {**result, "reason": "This demo measures Strategy B baseline only"}
     if signal["status"] not in ("PENDING", "FILLED") or signal.get("hits"):
         return {**result, "reason": "Signal is already past its entry phase"}
     if manual_pause(store, now):

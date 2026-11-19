@@ -215,11 +215,13 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         visible_alerts = [alert for alert in store.all("alert") if
                           (store.get("push", alert["profile"], {}).get("owner") == profile_id
                            if demo_account.enabled() else alert["profile"] == "shared")]
+        b_analysis = state.get("b_analysis") if status != "STALE" else None
         return dict(
             symbol=SYMBOL, mode=MODE, status="DEMO" if demo_account.enabled() and status == "LIVE" else status, clock=now, quote=quote, heartbeat=state.get("heartbeat"),
             error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after, frame), frame=frame,
             scan=state.get("scan") if status != "STALE" else None,
             scalp_scan=state.get("scalp_scan") if status != "STALE" else None,
+            b_analysis=b_analysis,
             session=window, active=public(selected) if selected else None,
             entry_check=(demo_account.check(store, selected, profile_id, wall, quote=quote, spec=state.get("spec"))
                          if demo_account.enabled() and selected and not stale else
@@ -387,6 +389,57 @@ def unsubscribe(request: Request, response: Response, device: PushDevice | None 
         if recipient:
             store.delete("push", recipient)
     return {"enabled": False}
+
+
+class PnLEntry(BaseModel):
+    date: str
+    pnl: float
+    trades: int = 0
+    note: str | None = None
+
+
+@app.get("/api/pnl")
+def pnl_get(request: Request, response: Response, month: str | None = None):
+    viewer = get_id(request, response)
+    with transaction() as store:
+        now = utc_now()
+        if month is None:
+            month = datetime.fromtimestamp(now, MY).strftime("%Y-%m")
+        prefix = f"pnl:{viewer}:{month}"
+        entries = []
+        for key, value in store.items("pnl"):
+            if key.startswith(prefix):
+                entries.append(value)
+        total_pnl = sum(e.get("pnl", 0) for e in entries)
+        total_trades = sum(e.get("trades", 0) for e in entries)
+        return {"month": month, "entries": entries, "total_pnl": total_pnl, "total_trades": total_trades}
+
+
+@app.put("/api/pnl")
+def pnl_put(entry: PnLEntry, request: Request, response: Response):
+    viewer = get_id(request, response)
+    try:
+        datetime.fromisoformat(entry.date)
+    except ValueError:
+        raise HTTPException(422, "Invalid date format. Use YYYY-MM-DD.")
+    key = f"pnl:{viewer}:{entry.date[:7]}:{entry.date}"
+    with transaction() as store:
+        existing = store.get("pnl", key) or {}
+        store.put("pnl", key, {**existing, **entry.model_dump()})
+    return {"ok": True}
+
+
+@app.delete("/api/pnl")
+def pnl_delete(date: str, request: Request, response: Response):
+    viewer = get_id(request, response)
+    try:
+        datetime.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(422, "Invalid date format. Use YYYY-MM-DD.")
+    key = f"pnl:{viewer}:{date[:7]}:{date}"
+    with transaction() as store:
+        store.delete("pnl", key)
+    return {"ok": True}
 
 
 if Path("dist/index.html").is_file():

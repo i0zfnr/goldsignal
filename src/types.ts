@@ -11,12 +11,33 @@ export type Signal = {
   strategy?: string;
   entry: [number, number]; initial_stop: number; stop: number; reference: number;
   targets: number[]; fill: number | null; status: string; hits: number;
+  max_spread?: number; hold_seconds?: number;
   filled_at?: number; exits?: { time: number; price: number; kind: string }[];
   evidence: Evidence;
   review?: { provider: string; reason: string };
 };
 type News = { title: string; time: number; source: string; url: string | null; first_seen?: number; impact?: "high" | "medium";
   actual?: string; forecast?: string; previous?: string };
+export type BZone = {
+  id: string; direction: string; top: number; bottom: number;
+  created: number; invalidated?: number | null; expired: number;
+  swing?: { price: number; time: number; confirmed?: number } | null;
+};
+
+export type BAnalysis = {
+  version: string; now: number; price: number;
+  h1: { direction: string; high_at?: number | null; low_at?: number | null; highs: number[]; lows: number[] };
+  m15: { direction: string; high_at?: number | null; low_at?: number | null; highs: number[]; lows: number[] };
+  zones: BZone[];
+  nearest_sell?: BZone | null;
+  nearest_buy?: BZone | null;
+  next_step: string; reason?: string | null;
+  candidate?: Signal | null;
+  rejection?: { time: number; high: number; low: number; close: number } | null;
+  trigger?: { time: number; close: number; bar: { time: number; open: number; high: number; low: number; close: number } } | null;
+  zone?: BZone | null;
+};
+
 export type Dashboard = {
   symbol: string; mode: string; status: string; clock: number; heartbeat: number | null;
   quote: { bid: number; ask: number; time: number } | null;
@@ -28,6 +49,7 @@ export type Dashboard = {
   entry_check?: EntryCheck | null;
   scan?: { reason: string; closed_at?: number } | null;
   scalp_scan?: string | null;
+  b_analysis?: BAnalysis | null;
   calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };
   alerts: { id: string; title: string; body: string; time: number; url: string; delivery: string }[];

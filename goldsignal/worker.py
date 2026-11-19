@@ -13,12 +13,13 @@ from filelock import FileLock
 from . import news
 from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, send_pending
-from .config import DB, ENTRY_TTL, MODE, REVIEW, SYMBOL, session, utc_now
+from .config import DB, ENTRY_TTL, MODE, REVIEW, STRATEGY_B_VERSION, SYMBOL, session, utc_now
 from .diagnostics import record
 from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .lifecycle import advance
 from .market import MT5, Replay
 from .scalp import scalp_candidate
+from .scalp_v2 import analyze as analyze_v2
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
@@ -224,6 +225,7 @@ def process(source, step, cursor, calendar, revision):
     candidate = new_candidate(snapshot)
     scan = snapshot.get("scan", {})
     frames = snapshot.get("frames", {})
+    b_analysis = None
     scalp = None
     scalp_scan = "Waiting for the M5 and M1 feed."
     with transaction() as store:
@@ -241,7 +243,12 @@ def process(source, step, cursor, calendar, revision):
                 bars = {bar["time"]: bar for bar in store.chart(frame=frame, limit=12)}
                 bars.update({bar["time"]: bar for bar in frames[frame]})
                 return [bars[time] for time in sorted(bars)[-12:]]
-            scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
+            if STRATEGY_B_VERSION == "katana_v1" and "H1" in frames:
+                b_analysis = analyze_v2(snapshot)
+                scalp = b_analysis.get("candidate")
+                scalp_scan = b_analysis.get("reason") or "Waiting for setup"
+            else:
+                scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
         mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
                          reason=scan.get("reason"), at=now)
         mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
@@ -357,11 +364,15 @@ def process(source, step, cursor, calendar, revision):
                     mark_lane_worker(workers, lane, stage, "waiting", reason="No candidate", at=now)
         for stage in ("kaze", "mizu", "nanao", "hikari"):
             mark_lane_worker(workers, "C", stage, "disabled", reason="Not configured", at=now)
-        mark_worker(workers, "idle", reason=scan.get("reason"), at=now)
-        store.put("state", "market", dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
+        feed_reason = "Feed live" if not snapshot.get("closed") else "Market closed"
+        mark_worker(workers, "idle", reason=feed_reason, at=now)
+        state_payload = dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,
-                  workers=workers, error=None))
+                  workers=workers, error=None)
+        if b_analysis:
+            state_payload["b_analysis"] = b_analysis
+        store.put("state", "market", state_payload)
     return snapshot
 
 

@@ -1,0 +1,288 @@
+"""Strategy B v2: H1 bias, M15 liquidity zones, M5 rejection, M1 confirmation.
+
+Deterministic Katana-inspired scalping rules. No AI, no look-ahead.
+Frozen parameters below are the versioned configuration.
+"""
+
+from .config import MAX_SPREAD, SYMBOL
+from .strategy import compare_pattern
+
+PARAMS = dict(
+    version="katana_v1",
+    swing=2,
+    displacement=1.5,
+    median_window=20,
+    zone_source_window=6,
+    stop_buffer=0.10,
+    band=0.25,
+    targets=(1.0, 1.5),
+    hold_seconds=1800,
+    entry_window=300,
+    zone_ttl=48 * 900,
+    max_spread=0.5,
+)
+
+
+def closed(bars, period, now):
+    return [bar for bar in bars if bar["time"] + period <= now]
+
+
+def _body(bar):
+    return abs(bar["close"] - bar["open"])
+
+
+def swings(bars, size=PARAMS["swing"], period=900):
+    result = []
+    for index in range(size, len(bars) - size):
+        bar = bars[index]
+        left = bars[index - size:index]
+        right = bars[index + 1:index + size + 1]
+        others = left + right
+        confirmed = right[-1]["time"] + period
+        if bar["high"] > max(row["high"] for row in others):
+            result.append(dict(index=index, kind="high", price=bar["high"], time=bar["time"],
+                               confirmed=confirmed))
+        if bar["low"] < min(row["low"] for row in others):
+            result.append(dict(index=index, kind="low", price=bar["low"], time=bar["time"],
+                               confirmed=confirmed))
+    return result
+
+
+def bias(bars, period=900):
+    rows = swings(bars, period=period)
+    highs = [row for row in rows if row["kind"] == "high"][-2:]
+    lows = [row for row in rows if row["kind"] == "low"][-2:]
+    reading = dict(direction="neutral", high_at=None, low_at=None,
+                   highs=[row["price"] for row in highs], lows=[row["price"] for row in lows])
+    if len(highs) < 2 or len(lows) < 2:
+        return reading
+    reading["high_at"] = highs[-1]["confirmed"]
+    reading["low_at"] = lows[-1]["confirmed"]
+    if highs[0]["price"] < highs[1]["price"] and lows[0]["price"] < lows[1]["price"]:
+        reading["direction"] = "bullish"
+    elif highs[0]["price"] > highs[1]["price"] and lows[0]["price"] > lows[1]["price"]:
+        reading["direction"] = "bearish"
+    return reading
+
+
+def _median(values):
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def zones(bars, now):
+    result = []
+    pending = swings(bars, period=900)
+    for index, bar in enumerate(bars):
+        prior = bars[max(0, index - PARAMS["median_window"]):index]
+        if len(prior) < PARAMS["median_window"]:
+            continue
+        threshold = PARAMS["displacement"] * _median(_body(row) for row in prior)
+        if _body(bar) < threshold:
+            continue
+        created = bar["time"] + 900
+        if created > now:
+            continue
+        if bar["close"] < bar["open"]:
+            broken = [row for row in pending if row["kind"] == "low"
+                      and row["confirmed"] <= bar["time"] and bar["close"] < row["price"] and row["index"] < index]
+            if not broken:
+                continue
+            source = next((row for row in reversed(bars[max(0, index - PARAMS["zone_source_window"]):index])
+                           if row["close"] > row["open"]), None)
+            if source is None:
+                continue
+            direction, top, bottom = "SELL", source["high"], source["low"]
+            swing = broken[-1]
+        elif bar["close"] > bar["open"]:
+            broken = [row for row in pending if row["kind"] == "high"
+                      and row["confirmed"] <= bar["time"] and bar["close"] > row["price"] and row["index"] < index]
+            if not broken:
+                continue
+            source = next((row for row in reversed(bars[max(0, index - PARAMS["zone_source_window"]):index])
+                           if row["close"] < row["open"]), None)
+            if source is None:
+                continue
+            direction, top, bottom = "BUY", source["high"], source["low"]
+            swing = broken[-1]
+        else:
+            continue
+        invalidated = None
+        for later in bars[index + 1:]:
+            if later["time"] + 900 > now:
+                break
+            if direction == "SELL" and later["close"] > top:
+                invalidated = later["time"] + 900
+                break
+            if direction == "BUY" and later["close"] < bottom:
+                invalidated = later["time"] + 900
+                break
+        result.append(dict(
+            id=f"z_{direction}_{bar['time']}", direction=direction, top=top, bottom=bottom,
+            candle=bar["time"], created=created,
+            source=dict(time=source["time"], open=source["open"], high=source["high"],
+                        low=source["low"], close=source["close"]),
+            swing=dict(price=swing["price"], time=swing["time"], confirmed=swing["confirmed"]),
+            broken_at=bar["close"], invalidated=invalidated,
+            expired=created + PARAMS["zone_ttl"],
+        ))
+    return result
+
+
+def active(zones_, now, price):
+    rows = [row for row in zones_ if (row["invalidated"] is None or row["invalidated"] > now) and row["expired"] > now]
+    rows.sort(key=lambda row: abs(price - (row["top"] + row["bottom"]) / 2))
+    return rows
+
+
+def _find_rejections(m5, zone, now):
+    rejections = []
+    for bar in m5:
+        close_time = bar["time"] + 300
+        if close_time <= zone["created"]:
+            continue
+        if close_time > now:
+            break
+        overlap = bar["high"] >= zone["bottom"] and bar["low"] <= zone["top"]
+        if not overlap:
+            continue
+        if zone["direction"] == "SELL" and bar["close"] < zone["bottom"]:
+            rejections.append(dict(time=close_time, bar_time=bar["time"], high=bar["high"],
+                                   low=bar["low"], close=bar["close"]))
+        elif zone["direction"] == "BUY" and bar["close"] > zone["top"]:
+            rejections.append(dict(time=close_time, bar_time=bar["time"], high=bar["high"],
+                                   low=bar["low"], close=bar["close"]))
+    return rejections
+
+
+def _confirmation(m1, rejection, now, direction):
+    limit = rejection["time"] + PARAMS["entry_window"]
+    for index, bar in enumerate(m1):
+        close_time = bar["time"] + 60
+        if close_time <= rejection["time"] or index < 3:
+            continue
+        if close_time > min(limit, now):
+            break
+        prior = m1[index - 3:index]
+        if direction == "SELL" and bar["close"] < min(row["low"] for row in prior):
+            return dict(time=close_time, close=bar["close"], bar=bar)
+        if direction == "BUY" and bar["close"] > max(row["high"] for row in prior):
+            return dict(time=close_time, close=bar["close"], bar=bar)
+    return None
+
+
+def _candidate(zone, rejection, trigger, snapshot, m15_closed):
+    ref = trigger["close"]
+    if zone["direction"] == "SELL":
+        stop = round(rejection["high"] + PARAMS["stop_buffer"], 2)
+        risk = round(stop - ref, 2)
+        better_price = round(ref + risk * PARAMS["band"], 2)
+        band = sorted([ref, better_price])
+        sign = -1
+    else:
+        stop = round(rejection["low"] - PARAMS["stop_buffer"], 2)
+        risk = round(ref - stop, 2)
+        better_price = round(ref - risk * PARAMS["band"], 2)
+        band = sorted([better_price, ref])
+        sign = 1
+    if risk <= 0:
+        return None
+    target = [round(ref + sign * risk * multiple, 2) for multiple in PARAMS["targets"]]
+    symbol = snapshot.get("symbol", SYMBOL)
+    trend_closes = {"15": [row["close"] for row in m15_closed[-4:]]}
+    pattern = compare_pattern(m15_closed, sign)
+    swing_price = (zone.get("swing") or {}).get("price", zone["top"] if zone["direction"] == "SELL" else zone["bottom"])
+    return dict(
+        id=f"b2_{zone['id']}_{rejection['time']}_{zone['direction']}", symbol=symbol,
+        strategy="B · liquidity scalp", strategy_version=PARAMS["version"], direction=zone["direction"],
+        reference=ref, entry=band, initial_stop=stop, stop=stop, targets=target,
+        max_spread=min(PARAMS["max_spread"], risk * 0.2), hold_seconds=PARAMS["hold_seconds"],
+        created=trigger["time"], expiry=min(trigger["time"] + PARAMS["entry_window"], zone["expired"]),
+        hits=0, exits=[], status="PENDING", fill=None,
+        result_per_lot=0 if snapshot.get("spec") else None, costs=snapshot.get("spec"),
+        evidence=dict(
+            grade="B · liquidity scalp",
+            reason=(f"M15 {'supply' if zone['direction'] == 'SELL' else 'demand'} zone "
+                    f"{zone['bottom']:.2f}–{zone['top']:.2f} with M5 rejection and M1 confirmation."),
+            zone=zone, watch_zone=[zone["bottom"], zone["top"]], rejection=rejection,
+            trigger=trigger["bar"], candle=trigger["bar"],
+            swing={"low": swing_price, "high": swing_price},
+            trend_closes=trend_closes, pattern=pattern,
+        ),
+    )
+
+
+def analyze(snapshot):
+    now = snapshot["now"]
+    quote = snapshot.get("quote") or {}
+    price = quote.get("bid") or quote.get("ask") or 0.0
+    m15 = closed(snapshot.get("bars", []), 900, now)
+    frames = snapshot.get("frames", {})
+    h1 = closed(frames.get("H1", []), 3600, now)
+    m5 = closed(frames.get("M5", []), 300, now)
+    m1 = closed(frames.get("M1", []), 60, now)
+    h1_bias = bias(h1, period=3600) if len(h1) >= 2 * PARAMS["swing"] + 2 else dict(direction="neutral")
+    m15_bias = bias(m15, period=900) if len(m15) >= 2 * PARAMS["swing"] + 2 else dict(direction="neutral")
+    all_zones = zones(m15, now)
+    live_zones = active(all_zones, now, price)
+    nearest_sell = next((row for row in live_zones if row["direction"] == "SELL"), None)
+    nearest_buy = next((row for row in live_zones if row["direction"] == "BUY"), None)
+
+    report = dict(
+        version=PARAMS["version"], now=now, price=price, h1=h1_bias, m15=m15_bias,
+        zones=live_zones[:6], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
+        next_step="WAITING FOR H1 DIRECTION", reason=None,
+        candidate=None, rejection=None, trigger=None, zone=None,
+    )
+    if not live_zones:
+        report["next_step"] = "WATCH BUY" if h1_bias.get("direction") == "bullish" else (
+            "WATCH SELL" if h1_bias.get("direction") == "bearish" else "WAITING FOR H1 DIRECTION"
+        )
+        report["reason"] = "No active M15 liquidity zone."
+        return report
+
+    wanted = {"bearish": "SELL", "bullish": "BUY"}.get(h1_bias.get("direction"))
+    chosen_zone = next((row for row in live_zones if row["direction"] == wanted), live_zones[0])
+    report["zone"] = chosen_zone
+
+    candidate_found = None
+    latest_rejection = None
+    for zone in ([chosen_zone] if wanted else live_zones[:2]):
+        rejections = _find_rejections(m5, zone, now)
+        if rejections:
+            latest_rejection = rejections[-1]
+            report["rejection"] = latest_rejection
+            for rej in reversed(rejections):
+                trig = _confirmation(m1, rej, now, zone["direction"])
+                if trig:
+                    cand = _candidate(zone, rej, trig, snapshot, m15)
+                    if cand:
+                        candidate_found = cand
+                        report["rejection"] = rej
+                        report["trigger"] = trig
+                        break
+        if candidate_found:
+            break
+
+    if candidate_found and wanted == candidate_found["direction"]:
+        report["candidate"] = candidate_found
+        report["next_step"] = "ENTRY READY"
+        report["reason"] = candidate_found["evidence"]["reason"]
+        return report
+
+    if candidate_found and wanted != candidate_found["direction"]:
+        report["reason"] = "M1 confirmation exists but H1 direction disagrees."
+        report["next_step"] = "WATCH BUY" if wanted == "BUY" else "WATCH SELL" if wanted == "SELL" else "WAITING FOR H1 DIRECTION"
+        return report
+
+    if h1_bias.get("direction") == "neutral":
+        report["next_step"] = "WATCH BUY" if chosen_zone["direction"] == "BUY" else "WATCH SELL"
+        report["reason"] = "H1 structure is neutral; watch zone only, no entry."
+    elif latest_rejection and now <= latest_rejection["time"] + PARAMS["entry_window"]:
+        report["next_step"] = "WAITING FOR M1 CONFIRMATION"
+        report["reason"] = "M5 rejection found; waiting for a closed M1 break."
+    else:
+        report["next_step"] = "WAITING FOR M5 REJECTION"
+        report["reason"] = "Zone active; waiting for a completed M5 rejection."
+    return report

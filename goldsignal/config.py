@@ -37,6 +37,7 @@ SWING = int(os.getenv("SWING_BARS", "2"))
 ZONE_WIDTH = float(os.getenv("ZONE_WIDTH", "0.8"))
 TREND = int(os.getenv("TREND_BARS", "4"))
 REVIEW = os.getenv("SIGNAL_REVIEW_MODE", "rules")
+STRATEGY_B_VERSION = os.getenv("STRATEGY_B_VERSION", "katana_v1")
 
 
 def utc_now():

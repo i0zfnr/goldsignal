@@ -9,7 +9,7 @@ STAGE_ROLES = {
 }
 LANES = (
     ("A", "Strategy A · M15 baseline"),
-    ("B", "Strategy B · M5/M1 scalping"),
+    ("B", "Strategy B · Liquidity scalp"),
     ("C", "Strategy C · reserved"),
 )
 

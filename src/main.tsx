@@ -7,7 +7,7 @@ import { LotSize } from "./lot";
 import { Access, AdminSettings, adminViews, ApiError, api, type AdminView } from "./access";
 import { InstallButton } from "./install";
 import { CandleClock } from "./candle-clock";
-import type { Dashboard, EntryCheck, Frame } from "./types";
+import type { BAnalysis, BZone, Dashboard, EntryCheck, Frame } from "./types";
 import { applyTheme, readTheme, ThemeToggle } from "./theme";
 import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
 import "@fontsource/geist/latin-400.css";
@@ -145,6 +145,146 @@ function Profile() {
     </form> : !message && <LoadingState>Loading profile…</LoadingState>}
     {message && <p role="status">{message}</p>}
   </section>;
+}
+
+function BAnalysisPanel({ analysis, displayTime, price }: {
+  analysis: BAnalysis; displayTime: (ts: number) => string; price: (value?: number | null) => string;
+}) {
+  const h1 = analysis.h1;
+  const m15 = analysis.m15;
+  const zones = analysis.zones;
+  const nextStep = analysis.next_step;
+  const reason = analysis.reason;
+  const candidate = analysis.candidate;
+  const rejection = analysis.rejection;
+  const trigger = analysis.trigger;
+  const currentPrice = analysis.price;
+
+  const biasLabel = (b: typeof h1) => {
+    if (b.direction === "bullish") return <span className="good font-semibold">Bullish</span>;
+    if (b.direction === "bearish") return <span className="warn font-semibold">Bearish</span>;
+    return <span className="muted">Neutral</span>;
+  };
+  const biasTime = (b: typeof h1) => b.high_at ? ` · confirmed ${displayTime(b.high_at)} MYT` : "";
+
+  const stepBadge = (step: string) => {
+    const tones: Record<string, "positive" | "negative" | "neutral" | "accent"> = {
+      "ENTRY READY": "positive",
+      "WAITING FOR M5 REJECTION": "accent",
+      "WAITING FOR M1 CONFIRMATION": "accent",
+      "WATCH BUY": "positive",
+      "WATCH SELL": "negative",
+      "EXPIRED": "neutral",
+      "SKIP": "neutral",
+    };
+    const tone = tones[step] ?? "neutral";
+    return <span className={`badge badge-${tone} small`}>{step}</span>;
+  };
+
+  const isInside = (z: BZone) => currentPrice >= z.bottom && currentPrice <= z.top;
+  const distanceToEdge = (z: BZone) => {
+    if (isInside(z)) return "0.00 (inside zone)";
+    const dist = Math.min(Math.abs(currentPrice - z.top), Math.abs(currentPrice - z.bottom));
+    return `${dist.toFixed(2)} XAUUSD`;
+  };
+
+  return (
+    <div className="b-analysis-panel" style={{ marginTop: 12 }}>
+      <details className="insight-details" open><summary>Multi-Timeframe Structure / Dinamik Struktur MTF</summary>
+        <div className="grid" style={{ gap: 8, marginTop: 8 }}>
+          <div><strong>H1 Direction</strong> · {biasLabel(h1)}<span className="muted small">{biasTime(h1)}</span></div>
+          <div><strong>M15 Context</strong> · {biasLabel(m15)}<span className="muted small">{biasTime(m15)}</span></div>
+        </div>
+        <p className="small muted" style={{ marginTop: 6 }}>
+          {h1.direction === "bearish" && m15.direction === "bullish" && "Bearish H1 with bullish M15 pullback: eligible for WATCH SELL."}
+          {h1.direction === "bullish" && m15.direction === "bearish" && "Bullish H1 with bearish M15 pullback: eligible for WATCH BUY."}
+          {h1.direction === "neutral" && "Neutral H1: watch zones active, but ENTRY READY is blocked."}
+          {h1.direction === m15.direction && h1.direction !== "neutral" && `H1 and M15 aligned ${h1.direction}.`}
+        </p>
+      </details>
+
+      <details className="insight-details" open><summary>Zone Rationale / Rasional Zon</summary>
+        <div style={{ marginTop: 8 }}>
+          {zones.length > 0 ? zones.map((z: BZone) => {
+            const isSell = z.direction === "SELL";
+            const inside = isInside(z);
+            return (
+              <div key={z.id} className="small" style={{
+                marginBottom: 8, padding: 10,
+                borderLeft: `4px solid ${isSell ? "#ef4444" : "#3b82f6"}`,
+                background: isSell ? "rgba(239,68,68,0.06)" : "rgba(59,130,246,0.06)",
+                borderRadius: "0 8px 8px 0",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong>{isSell ? "🔴 M15 Supply Zone (Sell)" : "🔵 M15 Demand Zone (Buy)"}</strong>
+                  <span className={`badge small ${inside ? "badge-accent" : "badge-neutral"}`}>
+                    {inside ? "Inside zone" : "Outside zone"}
+                  </span>
+                </div>
+                <div>Range: <strong>{price(z.bottom)} – {price(z.top)}</strong></div>
+                <div className="muted">Distance to edge: <strong>{distanceToEdge(z)}</strong></div>
+                {z.swing && (
+                  <div className="muted">
+                    Broke swing {isSell ? "low" : "high"} at {price(z.swing.price)}
+                    {z.swing.confirmed && ` (confirmed ${displayTime(z.swing.confirmed)} MYT)`}
+                  </div>
+                )}
+                <div className="muted">
+                  Created {displayTime(z.created)} MYT · {z.invalidated ? (
+                    <span className="warn">Invalidated {displayTime(z.invalidated)} MYT</span>
+                  ) : `Expires ${displayTime(z.expired)} MYT`}
+                </div>
+              </div>
+            );
+          }) : <p className="small muted">No active M15 liquidity zones found.</p>}
+        </div>
+      </details>
+
+      <details className="insight-details" open><summary>Action & Validation / Pelan Tindakan & Validasi</summary>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <strong>Status:</strong> {stepBadge(nextStep)}
+          </div>
+          {reason && <p className="small" style={{ marginTop: 6 }}>{reason}</p>}
+
+          {rejection && (
+            <div className="small" style={{ marginTop: 8, padding: 8, background: "rgba(239,68,68,0.08)", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)" }}>
+              <strong>M5 Rejection Confirmed</strong> at {displayTime(rejection.time)} MYT
+              <div className="muted">High {price(rejection.high)} · Low {price(rejection.low)} · Close {price(rejection.close)}</div>
+            </div>
+          )}
+
+          {trigger && (
+            <div className="small" style={{ marginTop: 6, padding: 8, background: "rgba(59,130,246,0.08)", borderRadius: 6, border: "1px solid rgba(59,130,246,0.2)" }}>
+              <strong>M1 Entry Trigger</strong> at {displayTime(trigger.time)} MYT
+              <div className="muted">Close {price(trigger.close)} broke 3-candle reference</div>
+            </div>
+          )}
+
+          {candidate && (
+            <div className="small" style={{ marginTop: 8, padding: 10, background: "rgba(34,197,94,0.08)", borderRadius: 8, border: "1px solid rgba(34,197,94,0.3)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <strong>ACTIONABLE ENTRY BAND</strong>
+                <span className="badge badge-positive small">{candidate.direction}</span>
+              </div>
+              <div style={{ fontSize: "1rem", fontWeight: 700, margin: "4px 0" }}>
+                {price(candidate.entry[0])} – {price(candidate.entry[1])}
+              </div>
+              <div>Natural Stop: <strong className="warn">{price(candidate.stop)}</strong></div>
+              <div>Targets: <strong className="good">TP1 {price(candidate.targets[0])} (1.0R)</strong> · <strong className="good">TP2 {price(candidate.targets[1])} (1.5R)</strong></div>
+              <div className="muted">Max Spread: {candidate.max_spread?.toFixed(2) ?? "–"} · Max Hold: {candidate.hold_seconds ? Math.round(candidate.hold_seconds / 60) : "–"}m</div>
+            </div>
+          )}
+
+          {h1.direction === "neutral" && zones.length > 0 && (
+            <p className="small muted" style={{ marginTop: 8 }}>
+              H1 structure is currently neutral. Zones remain active for observation, but live entry requires confirmed H1 directional bias.
+            </p>
+          )}
+        </div>
+      </details>
+    </div>
+  );
 }
 
 function Alerts({ data }: { data: Dashboard }) {
@@ -450,11 +590,12 @@ function App({ role, signOut, expired }: {
             }}>{value}</button>)}
           </div>
           <Chart key={frame} frame={frame} candles={data?.frame === frame ? data.candles : []} signal={signal ?? null}
-            quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null} />
+            quote={!error && ["LIVE", "DEMO"].includes(data?.status ?? "") ? data?.quote ?? null : null}
+            b_analysis={data?.b_analysis ?? null} />
           <div className="chart-footer"><span><i className="key entry" /> Entry zone</span><span><i className="key stop" /> Stop</span><span><i className="key target" /> Targets</span></div>
         </section>
           <section className="panel side-card insight" id="insight" aria-labelledby="insight-title">
-            <div className="panel-heading"><h2 id="insight-title">AI Insight</h2>
+            <div className="panel-heading"><h2 id="insight-title">Analysis</h2>
               <span className="muted">{error || data?.status === "STALE" ? "Feed stale" : data?.status === "LIVE" ? "Live scan" : data?.status === "DEMO" ? "Replay scan" : "Scanner"}</span>
             </div>
             <details className="insight-details" open={matchMedia("(min-width: 850px)").matches}><summary>What the scanner is watching</summary>
@@ -465,6 +606,7 @@ function App({ role, signOut, expired }: {
             {pattern && <p className="small muted">M15 RSI(8) {pattern.rsi8 ?? "unavailable"} · {pattern.history.toLocaleString()} historical candles · {pattern.matches} nearest matches</p>}
             {!data?.scan && !data?.scalp_scan && !candidate && <p className="small muted">Waiting for a scanner update.</p>}
             </details>
+            {data?.b_analysis && <BAnalysisPanel analysis={data.b_analysis} displayTime={displayTime} price={price} />}
           </section>
       </div>
       </div>

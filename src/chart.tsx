@@ -3,30 +3,40 @@ import {
   CandlestickSeries, ColorType, createChart, LineStyle,
   type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp,
 } from "lightweight-charts";
-import type { Candle, Frame, Signal } from "./types";
+import type { Candle, Frame, Signal, BAnalysis } from "./types";
 
 type ChartState = {
   chart: IChartApi; series: ISeriesApi<"Candlestick">; lines: IPriceLine[];
   data: Map<number, Candle>; last?: UTCTimestamp;
 };
+type Zone = { id: string; direction: string; top: number; bottom: number; created: number; invalidated?: number; expired: number };
 function chartColor(token: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 }
 
 const frameSeconds: Record<Frame, number> = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400 };
 
-export function Chart({ candles, signal, frame, quote }: {
+export function Chart({ candles, signal, frame, quote, b_analysis }: {
   candles: Candle[]; signal: Signal | null; frame: Frame; quote: { bid: number; ask: number } | null;
+  b_analysis?: BAnalysis | null;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const shade = useRef<HTMLDivElement>(null);
+  const sellZoneRef = useRef<HTMLDivElement>(null);
+  const buyZoneRef = useRef<HTMLDivElement>(null);
+  const entryBandRef = useRef<HTMLDivElement>(null);
   const rewardBox = useRef<HTMLDivElement>(null);
   const riskBox = useRef<HTMLDivElement>(null);
   const state = useRef<ChartState | null>(null);
   const zone = useRef<[number, number] | null>(null);
+  const sellZoneRange = useRef<[number, number] | null>(null);
+  const buyZoneRange = useRef<[number, number] | null>(null);
+  const entryBandRange = useRef<[number, number] | null>(null);
   const closed = useRef<{ start: number; end: number; fill: number; stop: number; target: number } | null>(null);
   const scaleRange = useRef<number[]>([]);
   const liveLines = useRef<IPriceLine[]>([]);
+  const zoneLines = useRef<IPriceLine[]>([]);
+  const entryBandLines = useRef<IPriceLine[]>([]);
   const [palette, setPalette] = useState(0);
   useEffect(() => {
     const chart = createChart(host.current!, {
@@ -66,28 +76,26 @@ export function Chart({ candles, signal, frame, quote }: {
     }
     window.addEventListener("goldsignal-theme", updateTheme);
     let animation = 0;
-    let lastBand = "";
-    function positionBand() {
-      const element = shade.current;
-      const range = zone.current;
-      if (element) {
-        const top = range && series.priceToCoordinate(range[1]);
-        const bottom = range && series.priceToCoordinate(range[0]);
-        element.hidden = top == null || bottom == null;
-        if (top != null && bottom != null) {
-          const height = chart.panes()[0].getHeight();
-          const start = Math.max(0, top);
-          const size = Math.max(0, Math.min(height, bottom) - start);
-          const inset = chart.priceScale("right").width();
-          const band = `${start}:${size}:${inset}`;
-          if (band !== lastBand) {
-            element.style.top = `${start}px`;
-            element.style.height = `${size}px`;
-            element.style.right = `${inset}px`;
-            lastBand = band;
-          }
-        }
+    function drawShade(element: HTMLDivElement | null, range: [number, number] | null) {
+      if (!element) return;
+      const top = range && series.priceToCoordinate(range[1]);
+      const bottom = range && series.priceToCoordinate(range[0]);
+      element.hidden = top == null || bottom == null;
+      if (top != null && bottom != null) {
+        const height = chart.panes()[0].getHeight();
+        const start = Math.max(0, top);
+        const size = Math.max(0, Math.min(height, bottom) - start);
+        const inset = chart.priceScale("right").width();
+        element.style.top = `${start}px`;
+        element.style.height = `${size}px`;
+        element.style.right = `${inset}px`;
       }
+    }
+    function positionBand() {
+      drawShade(shade.current, zone.current);
+      drawShade(sellZoneRef.current, sellZoneRange.current);
+      drawShade(buyZoneRef.current, buyZoneRange.current);
+      drawShade(entryBandRef.current, entryBandRange.current);
       const trade = closed.current;
       if (!trade) {
         if (rewardBox.current) rewardBox.current.hidden = true;
@@ -176,7 +184,11 @@ export function Chart({ candles, signal, frame, quote }: {
     const current = state.current;
     if (!current) return;
     current.lines.forEach((line) => current.series.removePriceLine(line));
+    zoneLines.current.forEach((line) => current.series.removePriceLine(line));
+    entryBandLines.current.forEach((line) => current.series.removePriceLine(line));
     current.lines = [];
+    zoneLines.current = [];
+    entryBandLines.current = [];
     closed.current = fill != null && filledAt !== undefined && closedAt !== undefined &&
       initialStop !== undefined && finalTarget !== undefined
       ? { start: filledAt, end: closedAt, fill, stop: initialStop, target: finalTarget } : null;
@@ -194,7 +206,42 @@ export function Chart({ candles, signal, frame, quote }: {
         axisLabelTextColor: chartColor("--chart-label"),
       }));
     }
-  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget, palette]);
+    sellZoneRange.current = b_analysis?.nearest_sell ? [b_analysis.nearest_sell.bottom, b_analysis.nearest_sell.top] : null;
+    buyZoneRange.current = b_analysis?.nearest_buy ? [b_analysis.nearest_buy.bottom, b_analysis.nearest_buy.top] : null;
+    entryBandRange.current = b_analysis?.candidate?.entry ? [b_analysis.candidate.entry[0], b_analysis.candidate.entry[1]] : null;
+    if (b_analysis?.nearest_sell) {
+      scaleRange.current.push(b_analysis.nearest_sell.bottom, b_analysis.nearest_sell.top);
+    }
+    if (b_analysis?.nearest_buy) {
+      scaleRange.current.push(b_analysis.nearest_buy.bottom, b_analysis.nearest_buy.top);
+    }
+    if (b_analysis?.zones) {
+      for (const z of b_analysis.zones.slice(0, 3)) {
+        const color = z.direction === "SELL" ? "#ef4444" : "#3b82f6";
+        zoneLines.current.push(current.series.createPriceLine({
+          price: z.top, color, title: `${z.direction} zone top`, lineWidth: 1, lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true, axisLabelTextColor: color,
+        }));
+        zoneLines.current.push(current.series.createPriceLine({
+          price: z.bottom, color, title: `${z.direction} zone bottom`, lineWidth: 1, lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true, axisLabelTextColor: color,
+        }));
+      }
+    }
+    if (b_analysis?.candidate?.entry) {
+      const entry = b_analysis.candidate.entry;
+      const color = b_analysis.candidate.direction === "SELL" ? "#ef4444" : "#3b82f6";
+      entryBandLines.current.push(current.series.createPriceLine({
+        price: entry[0], color, title: "Entry band low", lineWidth: 2, lineStyle: LineStyle.Solid,
+        axisLabelVisible: true, axisLabelTextColor: color,
+      }));
+      entryBandLines.current.push(current.series.createPriceLine({
+        price: entry[1], color, title: "Entry band high", lineWidth: 2, lineStyle: LineStyle.Solid,
+        axisLabelVisible: true, axisLabelTextColor: color,
+      }));
+      scaleRange.current.push(...entry);
+    }
+  }, [entryLow, entryHigh, stop, target1, target2, target3, closedAt, fill, filledAt, initialStop, finalTarget, palette, b_analysis]);
   const bid = quote?.bid, ask = quote?.ask;
   useEffect(() => {
     const series = state.current?.series;
@@ -217,6 +264,9 @@ export function Chart({ candles, signal, frame, quote }: {
   return <div className="chart-shell">
     <div ref={host} className="chart" role="img" aria-label={`XAUUSD ${frame} candlestick chart. Exact signal levels are listed below.`} />
     <div ref={shade} className="entry-shade" hidden aria-hidden="true" />
+    <div ref={sellZoneRef} className="zone-shade sell-zone-shade" hidden aria-hidden="true" />
+    <div ref={buyZoneRef} className="zone-shade buy-zone-shade" hidden aria-hidden="true" />
+    <div ref={entryBandRef} className="zone-shade entry-band-shade" hidden aria-hidden="true" />
     <div ref={rewardBox} className="trade-box trade-reward" hidden aria-hidden="true"><span>{outcome}</span></div>
     <div ref={riskBox} className="trade-box trade-risk" hidden aria-hidden="true" />
   </div>;
