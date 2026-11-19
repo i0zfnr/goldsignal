@@ -22,18 +22,44 @@ export function Performance({ revision }: { revision?: string }) {
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [sessionError, setSessionError] = useState("");
   const [error, setError] = useState("");
+
   useEffect(() => {
+    let current = true;
     const controller = new AbortController();
-    setError("");
-    setSessions(null);
-    setSessionError("");
-    api<Report>(`/api/performance?period=${period}`, { signal: controller.signal })
-      .then(result => { if (!controller.signal.aborted) setReport(result); })
-      .catch(() => { if (!controller.signal.aborted) setError("Could not load performance."); });
-    api<{ sessions: SessionRow[] }>(`/api/sessions?period=${period}`, { signal: controller.signal })
-      .then(result => { if (!controller.signal.aborted) setSessions(result.sessions); })
-      .catch(() => { if (!controller.signal.aborted) setSessionError("Session evidence is unavailable. Performance totals remain available."); });
-    return () => controller.abort();
+
+    async function load(isFirst = false) {
+      if (isFirst) {
+        setError("");
+        setSessionError("");
+      }
+      try {
+        const rep = await api<Report>(`/api/performance?period=${period}`, { signal: controller.signal });
+        if (current) setReport(rep);
+      } catch (failure) {
+        if (current && !controller.signal.aborted && isFirst) {
+          setError("Could not load performance.");
+        }
+      }
+      try {
+        const sess = await api<{ sessions: SessionRow[] }>(`/api/sessions?period=${period}`, { signal: controller.signal });
+        if (current) setSessions(sess.sessions);
+      } catch (failure) {
+        if (current && !controller.signal.aborted && isFirst) {
+          setSessionError("Session evidence is unavailable. Performance totals remain available.");
+        }
+      }
+    }
+
+    void load(true);
+    const interval = setInterval(() => {
+      void load(false);
+    }, 3000);
+
+    return () => {
+      current = false;
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [period, revision]);
 
   const scale = Math.max(1, ...(report?.buckets.map(row => Math.abs(row.pips)) ?? []));

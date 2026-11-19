@@ -284,7 +284,11 @@ function Alerts({ data }: { data: Dashboard }) {
     const refresh = () => void check().catch(() => setMessage("Could not check notifications on this device."));
     refresh();
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    const interval = setInterval(refresh, 3000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      clearInterval(interval);
+    };
   }, [supported, data.push_key]);
 
   async function action(work: () => Promise<void>) {
@@ -438,7 +442,7 @@ function App({ role, signOut, expired }: {
         }
         if (!abort.signal.aborted) setError("Dashboard connection lost. Retrying…");
       }
-      if (!abort.signal.aborted) timer = window.setTimeout(poll, 1000);
+      if (!abort.signal.aborted) timer = window.setTimeout(poll, 3000);
     }
     void poll();
     return () => { abort.abort(); clearTimeout(timer); };

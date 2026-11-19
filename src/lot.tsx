@@ -50,19 +50,23 @@ export function LotSize() {
     }
   }
 
-  async function loadPnL() {
-    setPnlBusy(true);
-    setPnlError("");
+  async function loadPnL(isInitial = false) {
+    if (isInitial) setPnlBusy(true);
     try {
       setPnlData(await api<PnLResponse>(`/api/pnl?month=${pnlMonth}`));
+      setPnlError("");
     } catch (failure) {
-      setPnlError((failure as Error).message);
+      if (isInitial) setPnlError((failure as Error).message);
     } finally {
-      setPnlBusy(false);
+      if (isInitial) setPnlBusy(false);
     }
   }
 
-  useEffect(() => { loadPnL(); }, [pnlMonth]);
+  useEffect(() => {
+    void loadPnL(true);
+    const interval = setInterval(() => void loadPnL(false), 3000);
+    return () => clearInterval(interval);
+  }, [pnlMonth]);
 
   async function changeMonth(delta: number) {
     const [y, m] = pnlMonth.split("-").map(Number);
