@@ -179,10 +179,73 @@ function BackendLog() {
 
 export const adminViews = [
   ["admin-users", "Users"],
+  ["admin-workers", "Workers"],
   ["admin-ai", "AI Configuration"],
   ["admin-chat", "AI Chat"],
   ["admin-errors", "Error Log"],
 ] as const;
+type WorkerRow = { name: string; label: string; role: string; status: string; reason: string | null; age_seconds: number | null };
+type WorkerReport = {
+  workers: WorkerRow[]; heartbeat_age: number | null; error: string | null; mode: string;
+  symbol: string; revision: number; quote_age: number | null; spec_age: number | null;
+  closed: boolean; scan?: string | null; scalp_scan?: string | null;
+};
+
+function workerTone(status: string) {
+  if (["running", "setup", "CONFIRM", "published"].includes(status)) return "positive" as const;
+  if (["error", "REJECT"].includes(status)) return "negative" as const;
+  return "neutral" as const;
+}
+
+function WorkerStatus() {
+  const [report, setReport] = useState<WorkerReport | null>(null);
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    try {
+      setReport(await api<WorkerReport>("/api/admin/workers"));
+      setError("");
+    } catch (failure) {
+      setError((failure as Error).message);
+    }
+  }
+  useEffect(() => {
+    void refresh();
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const age = (value: number | null) => value == null ? "–" : `${value}s`;
+  return <section className="panel access-panel" aria-labelledby="worker-status-title">
+    <PanelHeading title="Worker pipeline" id="worker-status-title" as="h3">
+      <Badge tone={report?.error ? "negative" : report && (report.heartbeat_age ?? 99) <= 30 ? "positive" : "neutral"}>
+        {report?.error ? "Error" : report ? `Heartbeat ${age(report.heartbeat_age)}` : "Loading"}
+      </Badge>
+    </PanelHeading>
+    {error && <p className="warn" role="alert">{error}</p>}
+    {!report && !error && <LoadingState>Loading worker status…</LoadingState>}
+    {report && <>
+      <dl className="report-stats">
+        <div><dt>Feed</dt><dd>{report.symbol} · {report.mode} · rev {report.revision}</dd></div>
+        <div><dt>Quote age</dt><dd>{age(report.quote_age)}</dd></div>
+        <div><dt>Spec age</dt><dd>{age(report.spec_age)}</dd></div>
+        <div><dt>Market</dt><dd>{report.closed ? "Closed" : "Open"}</dd></div>
+      </dl>
+      <table className="report-breakdown">
+        <thead><tr><th scope="col">Worker</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Last reason</th><th scope="col">Age</th></tr></thead>
+        <tbody>{report.workers.map(row => <tr key={row.name}>
+          <th scope="row">{row.label}</th>
+          <td>{row.role}</td>
+          <td><Badge tone={workerTone(row.status)}>{row.status}</Badge></td>
+          <td className="muted">{row.reason ?? "–"}</td>
+          <td>{age(row.age_seconds)}</td>
+        </tr>)}</tbody>
+      </table>
+      <p className="small muted">Logical stages in one worker process: Kaze analyses, Mizu checks risk and gates, Nanao reviews with AI, Hikari publishes. No model can override a failed gate.</p>
+    </>}
+  </section>;
+}
+
 export type AdminView = typeof adminViews[number][0];
 
 export function AdminSettings({ view }: { view: AdminView | undefined }) {
@@ -282,6 +345,7 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
       <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
       </> : !error && view !== "admin-errors" && <LoadingState>Loading settings…</LoadingState>}
       {view === "admin-errors" && <BackendLog />}
+      {view === "admin-workers" && <WorkerStatus />}
     </section>;
 }
 

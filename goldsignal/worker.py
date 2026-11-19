@@ -22,6 +22,7 @@ from .scalp import scalp_candidate
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
+from .workers import blank as blank_workers, mark as mark_worker
 from . import demo_account
 
 log = logging.getLogger(__name__)
@@ -101,11 +102,20 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
             headers={"x-goog-api-key": key}, timeout=8,
             json={"contents": [{"parts": [{"text": (
-                'Review one XAUUSD entry. Keep supplied side and levels. Trend deltas are ordered by timeframe. '
-                'Next4 is historical return in side direction (bps), not a forecast. '
-                'CONFIRM coherent evidence, WAIT uncertainty, REJECT contradiction. Reason max 12 words. '
-                + calendar_rule + " " + json.dumps(evidence, separators=(",", ":"))
+                'Role: deterministic entry reviewer. You never predict prices and you use only the JSON evidence supplied. '
+                'Rules: (1) keep the supplied side and levels exactly; '
+                '(2) CONFIRM only when every field is present and consistent: side, entry, stop, targets, trend deltas, '
+                'pattern.history >= 100, quote inside the entry zone, and no calendar pause; '
+                '(3) WAIT when any required field is missing, null, stale or contradictory; '
+                '(4) REJECT only when the supplied evidence directly contradicts the side; '
+                '(5) pattern.next4_bps is a historical median of past moves, never a forecast or expected profit; '
+                '(6) never invent levels, news, orders, institutions or probabilities; '
+                '(7) reason is at most 12 words and must cite at least one supplied field name. '
+                'Output JSON only with keys decision (CONFIRM, WAIT, REJECT) and reason. '
+                + calendar_rule + " Evidence: " + json.dumps(evidence, separators=(",", ":"))
             )}]}], "generationConfig": {"responseMimeType": "application/json",
+                                        "temperature": 0,
+                                        "topP": 0.1,
                                         "maxOutputTokens": 512 if MODEL == PRO_MODEL else 96,
                                         "responseSchema": {"type": "OBJECT", "required": ["decision", "reason"],
                                             "properties": {"decision": {"type": "STRING", "enum": ["CONFIRM", "WAIT", "REJECT"]},
@@ -209,6 +219,8 @@ def process(source, step, cursor, calendar, revision):
     now = snapshot["now"]
     if DEMO:
         calendar = news.refresh(True, now, calendar)
+    workers = blank_workers()
+    mark_worker(workers, "kuro", "running", at=now)
     candidate = new_candidate(snapshot)
     scan = snapshot.get("scan", {})
     frames = snapshot.get("frames", {})
@@ -230,6 +242,8 @@ def process(source, step, cursor, calendar, revision):
                 bars.update({bar["time"]: bar for bar in frames[frame]})
                 return [bars[time] for time in sorted(bars)[-12:]]
             scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
+        mark_worker(workers, "kaze", "setup" if (candidate or scalp) else "waiting",
+                    reason=scalp_scan if scalp else scan.get("reason"), at=now)
         pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
         for item in pending:
             item.setdefault("session", session_label(snapshot["now"]))
@@ -246,6 +260,7 @@ def process(source, step, cursor, calendar, revision):
     reviews = {}
     retries = {}
     reviewed = False
+    model = None
     for item in pending:
         prior = previous[item["id"]]
         same_provider = prior and prior.get("review_provider", REVIEW) == provider
@@ -276,6 +291,9 @@ def process(source, step, cursor, calendar, revision):
             reviewed = True
         reviews[item["id"]] = model
         retries[item["id"]] = retry
+    mark_worker(workers, "nanao", "disabled" if provider == "rules" else (model[0] if model else "waiting"),
+                reason="Rules-only review" if provider == "rules" else (model[1] if model else "Waiting for review"),
+                at=now)
     if reviewed and not DEMO:
         snapshot = source.read(cursor, step, utc_now())
     with transaction() as store:
@@ -308,6 +326,7 @@ def process(source, step, cursor, calendar, revision):
                                         "review_provider": provider, "gemini_retry": retries[key]})
             if item.get("strategy"):
                 scalp_scan = f"{decision}: {reason}"
+            mark_worker(workers, "mizu", decision, reason=reason, at=now)
             if not stopped and baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(item, exits=[], created=now))
             if decision == "CONFIRM":
@@ -319,14 +338,20 @@ def process(source, step, cursor, calendar, revision):
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
+                    mark_worker(workers, "hikari", "published",
+                                reason=f"{item['direction']} {key}", at=now)
                     if item.get("strategy"):
                         scalp_scan = f"{item['direction']} scalp signal published."
         store.save_bars(snapshot["bars"], revision)
         for frame, bars in snapshot.get("frames", {}).items():
             store.save_bars(bars, revision, frame)
+        if workers["hikari"]["status"] == "idle":
+            mark_worker(workers, "hikari", "waiting", reason="No eligible publication", at=now)
+        mark_worker(workers, "kuro", "idle", reason=scan.get("reason"), at=now)
         store.put("state", "market", dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
-                  revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan, error=None))
+                  revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,
+                  workers=workers, error=None))
     return snapshot
 
 
@@ -367,7 +392,10 @@ def run():
                         unavailable = {"now": clock, "ticks": []}
                         track(store, "signal", unavailable, calendar)
                         track(store, "shadow", unavailable, calendar)
-                    store.put("state", "market", {**prior, "heartbeat": clock, "error": "Market worker cycle failed"})
+                    failed = blank_workers()
+                    mark_worker(failed, "kuro", "error", reason=str(exc)[:300], at=clock)
+                    store.put("state", "market", {**prior, "heartbeat": clock, "workers": failed,
+                                                  "error": "Market worker cycle failed"})
             time.sleep(max(0.1, (float(os.getenv("REPLAY_STEP_SECONDS", "5")) if DEMO else 1) -
                            (time.monotonic() - cycle)))
 

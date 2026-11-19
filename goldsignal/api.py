@@ -22,6 +22,7 @@ from .chat import router as chat_router
 from .diagnostics import record
 from .strategy import executable, gate
 from .sessions import summary as session_summary
+from .workers import snapshot as worker_snapshot
 from . import demo_account, demo_phone
 
 
@@ -70,6 +71,22 @@ def backend_errors(request: Request):
     admin(request)
     with transaction() as store:
         return {"entries": store.recent("backend_log", 50)}
+
+
+@app.get("/api/admin/workers")
+def admin_workers(request: Request):
+    admin(request)
+    with transaction() as store:
+        state = store.get("state", "market", {})
+    now = utc_now()
+    quote = state.get("quote") or {}
+    spec = state.get("spec") or {}
+    return {**worker_snapshot(state.get("workers"), now, state.get("heartbeat"), state.get("error")),
+            "mode": MODE, "symbol": SYMBOL, "revision": state.get("revision", 0),
+            "quote_age": round(now - quote["time"], 1) if quote.get("time") else None,
+            "spec_age": round(now - spec["time"], 1) if spec.get("time") else None,
+            "closed": bool(state.get("closed")), "scan": state.get("scan", {}).get("reason"),
+            "scalp_scan": state.get("scalp_scan")}
 
 
 def get_id(request, response):

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, CalendarDays, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X } from "lucide-react";
+import { Bell, CalendarDays, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X, Activity } from "lucide-react";
 import { Chart } from "./chart";
 import { Performance } from "./performance";
 import { Access, AdminSettings, adminViews, ApiError, api, type AdminView } from "./access";
@@ -36,7 +36,7 @@ const dashboardViews = [
 type DashboardView = typeof dashboardViews[number][0] | AdminView | "profile";
 const viewIcons = {
   signal: ChartCandlestick, performance: ChartNoAxesCombined, history: History, news: CalendarDays,
-  alerts: Bell, profile: UserRound, "admin-users": Users, "admin-ai": Settings2,
+  alerts: Bell, profile: UserRound, "admin-users": Users, "admin-workers": Activity, "admin-ai": Settings2,
   "admin-chat": MessageSquare, "admin-errors": CircleAlert,
 };
 

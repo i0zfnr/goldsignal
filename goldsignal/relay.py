@@ -2,6 +2,7 @@ import argparse
 import base64
 import json
 import logging
+import os
 import secrets
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-ORIGIN = "http://127.0.0.1:8000"
+ORIGIN = os.getenv("GOLDSIGNAL_API", "http://127.0.0.1:8011")
 ROUTES = {("GET", "/api/dashboard"), ("GET", "/api/performance"), ("GET", "/api/sessions"),
           ("GET", "/api/viewer-profile"), ("PUT", "/api/viewer-profile"),
           ("POST", "/api/push/status"), ("POST", "/api/push/test"),
@@ -19,7 +20,8 @@ ROUTES = {("GET", "/api/dashboard"), ("GET", "/api/performance"), ("GET", "/api/
           ("DELETE", "/api/auth/session"), ("POST", "/api/auth/admin"), ("POST", "/api/auth/viewer"),
           ("GET", "/api/admin/settings"), ("POST", "/api/admin/keys"), ("DELETE", "/api/admin/keys"),
           ("PUT", "/api/admin/gemini"), ("GET", "/api/admin/chat"), ("POST", "/api/admin/chat"),
-          ("PUT", "/api/admin/pause"), ("GET", "/api/admin/errors"), ("POST", "/api/entry-open")}
+          ("PUT", "/api/admin/pause"), ("GET", "/api/admin/errors"), ("GET", "/api/admin/workers"),
+          ("POST", "/api/entry-open")}
 
 
 def encode(data):
