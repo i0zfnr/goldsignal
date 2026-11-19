@@ -22,7 +22,7 @@ from .scalp import scalp_candidate
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
-from .workers import blank as blank_workers, mark as mark_worker
+from .workers import blank as blank_workers, mark as mark_worker, mark_lane as mark_lane_worker
 from . import demo_account
 
 log = logging.getLogger(__name__)
@@ -220,7 +220,7 @@ def process(source, step, cursor, calendar, revision):
     if DEMO:
         calendar = news.refresh(True, now, calendar)
     workers = blank_workers()
-    mark_worker(workers, "kuro", "running", at=now)
+    mark_worker(workers, "running", at=now)
     candidate = new_candidate(snapshot)
     scan = snapshot.get("scan", {})
     frames = snapshot.get("frames", {})
@@ -242,11 +242,15 @@ def process(source, step, cursor, calendar, revision):
                 bars.update({bar["time"]: bar for bar in frames[frame]})
                 return [bars[time] for time in sorted(bars)[-12:]]
             scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
-        mark_worker(workers, "kaze", "setup" if (candidate or scalp) else "waiting",
-                    reason=scalp_scan if scalp else scan.get("reason"), at=now)
+        mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
+                         reason=scan.get("reason"), at=now)
+        mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
+                         reason=scalp_scan, at=now)
+        mark_lane_worker(workers, "C", "kaze", "disabled", reason="Not configured", at=now)
         pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
         for item in pending:
             item.setdefault("session", session_label(snapshot["now"]))
+            item.setdefault("lane", "B" if item.get("strategy") else "A")
         if demo_account.enabled():
             for item in pending:
                 if item.get("strategy") and not store.get("demo_candidate", item["id"]):
@@ -291,9 +295,10 @@ def process(source, step, cursor, calendar, revision):
             reviewed = True
         reviews[item["id"]] = model
         retries[item["id"]] = retry
-    mark_worker(workers, "nanao", "disabled" if provider == "rules" else (model[0] if model else "waiting"),
-                reason="Rules-only review" if provider == "rules" else (model[1] if model else "Waiting for review"),
-                at=now)
+        mark_lane_worker(workers, item.get("lane", "A"), "nanao",
+                         "disabled" if provider == "rules" else (model[0] if model else "waiting"),
+                         reason="Rules-only review" if provider == "rules" else (
+                             model[1] if model else "Waiting for review"), at=now)
     if reviewed and not DEMO:
         snapshot = source.read(cursor, step, utc_now())
     with transaction() as store:
@@ -326,7 +331,7 @@ def process(source, step, cursor, calendar, revision):
                                         "review_provider": provider, "gemini_retry": retries[key]})
             if item.get("strategy"):
                 scalp_scan = f"{decision}: {reason}"
-            mark_worker(workers, "mizu", decision, reason=reason, at=now)
+            mark_lane_worker(workers, item.get("lane", "A"), "mizu", decision, reason=reason, at=now)
             if not stopped and baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(item, exits=[], created=now))
             if decision == "CONFIRM":
@@ -338,16 +343,20 @@ def process(source, step, cursor, calendar, revision):
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
-                    mark_worker(workers, "hikari", "published",
-                                reason=f"{item['direction']} {key}", at=now)
+                    mark_lane_worker(workers, item.get("lane", "A"), "hikari", "published",
+                                     reason=f"{item['direction']} {key}", at=now)
                     if item.get("strategy"):
                         scalp_scan = f"{item['direction']} scalp signal published."
         store.save_bars(snapshot["bars"], revision)
         for frame, bars in snapshot.get("frames", {}).items():
             store.save_bars(bars, revision, frame)
-        if workers["hikari"]["status"] == "idle":
-            mark_worker(workers, "hikari", "waiting", reason="No eligible publication", at=now)
-        mark_worker(workers, "kuro", "idle", reason=scan.get("reason"), at=now)
+        for lane in ("A", "B"):
+            for stage in ("mizu", "nanao", "hikari"):
+                if workers["lanes"][lane]["stages"][stage]["status"] == "idle":
+                    mark_lane_worker(workers, lane, stage, "waiting", reason="No candidate", at=now)
+        for stage in ("kaze", "mizu", "nanao", "hikari"):
+            mark_lane_worker(workers, "C", stage, "disabled", reason="Not configured", at=now)
+        mark_worker(workers, "idle", reason=scan.get("reason"), at=now)
         store.put("state", "market", dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,
@@ -393,7 +402,7 @@ def run():
                         track(store, "signal", unavailable, calendar)
                         track(store, "shadow", unavailable, calendar)
                     failed = blank_workers()
-                    mark_worker(failed, "kuro", "error", reason=str(exc)[:300], at=clock)
+                    mark_worker(failed, "error", reason=str(exc)[:300], at=clock)
                     store.put("state", "market", {**prior, "heartbeat": clock, "workers": failed,
                                                   "error": "Market worker cycle failed"})
             time.sleep(max(0.1, (float(os.getenv("REPLAY_STEP_SECONDS", "5")) if DEMO else 1) -

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+﻿import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
 import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
@@ -64,7 +64,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
           <label>{isAdmin ? "Password" : "Access key"}
             <input name="credential" type="password" autoComplete={isAdmin ? "current-password" : "off"} required maxLength={256} />
           </label>
-          <button className="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+          <button className="primary" disabled={busy}>{busy ? "Signing inâ€¦" : "Sign in"}</button>
           {error && <p className="warn" role="alert">{error}</p>}
         </form>
       </section>
@@ -129,7 +129,7 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
       </div>
       <form className="access-form" onSubmit={submit}>
         <label>Message<textarea value={message} onChange={event => setMessage(event.target.value)} rows={3} required disabled={busy} /></label>
-        <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Gemini…" : "Send message"}</button>
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Geminiâ€¦" : "Send message"}</button>
       </form>
       {error && <p className="warn" role="alert">{error}</p>}
     </> : <EmptyState>Save your API key in Gemini review to start chatting.</EmptyState>}
@@ -159,10 +159,10 @@ function BackendLog() {
 
   return <section className="panel access-panel admin-chat" aria-labelledby="backend-log-title">
     <PanelHeading title="Backend error log" id="backend-log-title" as="h3">
-      <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshing…" : "Refresh log"}</button>
+      <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshingâ€¦" : "Refresh log"}</button>
     </PanelHeading>
     {error && <p className="warn" role="alert">{error}{entries && " Showing last loaded entries."}</p>}
-    {!entries && busy && <LoadingState>Loading backend log…</LoadingState>}
+    {!entries && busy && <LoadingState>Loading backend logâ€¦</LoadingState>}
     {entries?.length === 0 && <EmptyState>No backend errors recorded yet.</EmptyState>}
     {!!entries?.length && <ol className="backend-log">
       {entries.map((entry, index) => <li key={`${entry.time}-${index}`}>
@@ -185,16 +185,18 @@ export const adminViews = [
   ["admin-errors", "Error Log"],
 ] as const;
 type WorkerRow = { name: string; label: string; role: string; status: string; reason: string | null; age_seconds: number | null };
+type WorkerLane = { id: string; label: string; stages: WorkerRow[] };
 type WorkerReport = {
-  workers: WorkerRow[]; heartbeat_age: number | null; error: string | null; mode: string;
+  kuro: WorkerRow; lanes: WorkerLane[]; heartbeat_age: number | null; error: string | null; mode: string;
   symbol: string; revision: number; quote_age: number | null; spec_age: number | null;
   closed: boolean; scan?: string | null; scalp_scan?: string | null;
 };
 
-function workerTone(status: string) {
-  if (["running", "setup", "CONFIRM", "published"].includes(status)) return "positive" as const;
-  if (["error", "REJECT"].includes(status)) return "negative" as const;
-  return "neutral" as const;
+function workerClass(status: string) {
+  if (["running", "setup", "CONFIRM", "published"].includes(status)) return "live";
+  if (status === "error" || status === "REJECT") return "error";
+  if (status === "WAIT") return "warn";
+  return "idle";
 }
 
 function WorkerStatus() {
@@ -215,7 +217,7 @@ function WorkerStatus() {
     return () => clearInterval(timer);
   }, []);
 
-  const age = (value: number | null) => value == null ? "–" : `${value}s`;
+  const age = (value: number | null) => value == null ? "â€“" : `${value}s`;
   return <section className="panel access-panel" aria-labelledby="worker-status-title">
     <PanelHeading title="Worker pipeline" id="worker-status-title" as="h3">
       <Badge tone={report?.error ? "negative" : report && (report.heartbeat_age ?? 99) <= 30 ? "positive" : "neutral"}>
@@ -223,25 +225,45 @@ function WorkerStatus() {
       </Badge>
     </PanelHeading>
     {error && <p className="warn" role="alert">{error}</p>}
-    {!report && !error && <LoadingState>Loading worker status…</LoadingState>}
+    {!report && !error && <LoadingState>Loading worker statusâ€¦</LoadingState>}
     {report && <>
       <dl className="report-stats">
-        <div><dt>Feed</dt><dd>{report.symbol} · {report.mode} · rev {report.revision}</dd></div>
+        <div><dt>Feed</dt><dd>{report.symbol} Â· {report.mode} Â· rev {report.revision}</dd></div>
         <div><dt>Quote age</dt><dd>{age(report.quote_age)}</dd></div>
         <div><dt>Spec age</dt><dd>{age(report.spec_age)}</dd></div>
         <div><dt>Market</dt><dd>{report.closed ? "Closed" : "Open"}</dd></div>
       </dl>
-      <table className="report-breakdown">
-        <thead><tr><th scope="col">Worker</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Last reason</th><th scope="col">Age</th></tr></thead>
-        <tbody>{report.workers.map(row => <tr key={row.name}>
-          <th scope="row">{row.label}</th>
-          <td>{row.role}</td>
-          <td><Badge tone={workerTone(row.status)}>{row.status}</Badge></td>
-          <td className="muted">{row.reason ?? "–"}</td>
-          <td>{age(row.age_seconds)}</td>
-        </tr>)}</tbody>
-      </table>
-      <p className="small muted">Logical stages in one worker process: Kaze analyses, Mizu checks risk and gates, Nanao reviews with AI, Hikari publishes. No model can override a failed gate.</p>
+      <div className="worker-kuro">
+        <div className={`worker-node worker-${workerClass(report.kuro.status)}`} title={report.kuro.reason ?? report.kuro.role}>
+          <span className="worker-pulse" aria-hidden="true" />
+          <strong>{report.kuro.label}</strong>
+          <small>{report.kuro.status}</small>
+        </div>
+        <p className="small muted">{report.kuro.reason ?? report.kuro.role}</p>
+      </div>
+      {report.lanes.map(lane => {
+        const last = [...lane.stages].filter(row => row.age_seconds != null)
+          .sort((a, b) => (a.age_seconds ?? 0) - (b.age_seconds ?? 0))[0] ?? lane.stages[0];
+        const active = lane.stages.some(row => workerClass(row.status) === "live");
+        return <div className="worker-lane" key={lane.id}>
+          <div className="worker-lane-head">
+            <strong>{lane.label}</strong>
+            <Badge tone={active ? "positive" : "neutral"}>{active ? "Active" : lane.id === "C" ? "Reserved" : "Waiting"}</Badge>
+          </div>
+          <div className="worker-flow">
+            {lane.stages.map((row, index) => <div className="worker-flow-item" key={row.name}>
+              {index > 0 && <span className="worker-link" aria-hidden="true"><i /></span>}
+              <div className={`worker-node worker-${workerClass(row.status)}`} title={row.reason ?? row.role}>
+                <span className="worker-pulse" aria-hidden="true" />
+                <strong>{row.label}</strong>
+                <small>{row.status}</small>
+              </div>
+            </div>)}
+          </div>
+          <p className="small muted">{last.label} Â· {last.reason ?? "â€“"}</p>
+        </div>;
+      })}
+      <p className="small muted">Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C is reserved until it has its own evidence.</p>
     </>}
   </section>;
 }
@@ -343,7 +365,7 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
       <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
-      </> : !error && view !== "admin-errors" && <LoadingState>Loading settings…</LoadingState>}
+      </> : !error && view !== "admin-errors" && <LoadingState>Loading settingsâ€¦</LoadingState>}
       {view === "admin-errors" && <BackendLog />}
       {view === "admin-workers" && <WorkerStatus />}
     </section>;
@@ -374,7 +396,7 @@ export function Access({ dashboard }: { dashboard: (
   if (error) return <><AccessHeader /><main className="access-page">
     <p className="warn" role="alert">{error}</p><button onClick={load}>Retry</button>
   </main></>;
-  if (role === undefined) return <><AccessHeader /><main className="access-page"><p role="status">Checking access…</p></main></>;
+  if (role === undefined) return <><AccessHeader /><main className="access-page"><p role="status">Checking accessâ€¦</p></main></>;
   if (isAdmin && role !== "admin") return <LoginPage key={role ?? "guest"} isAdmin complete={setRole} />;
   if (!role) return <LoginPage isAdmin={false} complete={setRole} />;
   return dashboard(role, signOut, () => setRole(null));
