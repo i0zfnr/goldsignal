@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
 import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
@@ -246,7 +246,7 @@ function WorkerStatus() {
     {!report && !error && <LoadingState>Loading worker statusâ€¦</LoadingState>}
     {report && <>
       <dl className="report-stats">
-        <div><dt>Feed</dt><dd>{report.symbol} Â· {report.mode} Â· rev {report.revision}</dd></div>
+        <div><dt>Feed</dt><dd>{report.symbol} · {report.mode} · rev {report.revision}</dd></div>
         <div><dt>Quote age</dt><dd>{age(report.quote_age)}</dd></div>
         <div><dt>Spec age</dt><dd>{age(report.spec_age)}</dd></div>
         <div><dt>Market</dt><dd>{report.closed ? "Closed" : "Open"}</dd></div>

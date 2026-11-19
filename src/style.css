@@ -471,3 +471,49 @@ footer a { color: inherit; }
 @keyframes crew-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes crew-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.15); } }
 @keyframes crew-bubble { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -2px); } }
+
+/* vivid crew skin */
+.face-kaze { --crew: #f59e0b; }
+.face-mizu { --crew: #3b82f6; }
+.face-nanao { --crew: #10b981; }
+.face-hikari { --crew: #a855f7; }
+.face-kuro { --crew: #8b9bb4; }
+.crew-face { width: 60px; height: 60px; z-index: 0;
+  background: radial-gradient(circle at 32% 24%, rgba(255,255,255,.9) 0 10%, rgba(255,255,255,0) 44%),
+              linear-gradient(160deg, color-mix(in srgb, var(--crew) 78%, #fff), var(--crew) 58%,
+                              color-mix(in srgb, var(--crew) 68%, #000));
+  border-color: color-mix(in srgb, var(--crew) 72%, #000);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--crew) 30%, transparent),
+              0 14px 22px -14px color-mix(in srgb, var(--crew) 85%, transparent); }
+.crew-face::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; z-index: -1;
+  background: conic-gradient(from 0deg, transparent 0 52%,
+              color-mix(in srgb, var(--crew) 85%, transparent) 70%, transparent 86%);
+  opacity: .35; }
+.crew-card { background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 92%, #fff), var(--panel)); }
+.crew-card:hover .crew-face { filter: saturate(1.15) brightness(1.05); }
+.crew-idle { opacity: .9; }
+.crew-idle .crew-face { filter: saturate(.55); }
+.crew-idle .crew-face::after { opacity: .12; }
+.crew-error .crew-face { filter: saturate(1.2); }
+.crew-error .crew-face::after { opacity: .7; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .crew-face::after { animation: crew-spin 9s linear infinite; }
+  .crew-idle .crew-face { animation: crew-breathe 7s ease-in-out infinite; }
+  .crew-live .crew-face { animation: crew-bob 2.4s ease-in-out infinite,
+                                     crew-glow 2.4s ease-in-out infinite; }
+  .crew-live .crew-face::after { animation: crew-spin 3.2s linear infinite; }
+  .crew-live .crew-bubble { animation: crew-bubble 2.4s ease-in-out infinite; }
+}
+@keyframes crew-spin { to { transform: rotate(360deg); } }
+@keyframes crew-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+@keyframes crew-glow {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--crew) 30%, transparent),
+                         0 10px 18px -14px color-mix(in srgb, var(--crew) 75%, transparent); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--crew) 45%, transparent),
+                      0 14px 26px -12px color-mix(in srgb, var(--crew) 95%, transparent); }
+}
+.crew-face i { top: 22px; }
+.crew-face i:first-of-type { left: 16px; }
+.crew-face i:last-of-type { right: 16px; }
+.crew-face b { bottom: 14px; }

@@ -289,7 +289,8 @@ def process(source, step, cursor, calendar, revision):
                 after = clock + GEMINI_RETRY_DELAYS[failures - 1] if failures <= len(GEMINI_RETRY_DELAYS) else None
                 retry = {"failures": failures, "after": after} if after is not None and after < item["expiry"] else None
                 outcome = "Retry scheduled." if retry else "No retry remains for this entry."
-                record("Gemini review", f"Attempt {failures} failed ({exc}). {outcome}")
+                record("Gemini review", f"Attempt {failures} failed ({exc}). {outcome}",
+                       level="info" if retry else "error")
                 model = ("WAIT", "Gemini temporarily unavailable. Retry scheduled." if retry else
                          "Gemini unavailable. No retry remains for this entry.")
             reviewed = True
