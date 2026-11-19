@@ -99,11 +99,11 @@ def test_m15_zone_creation_and_no_lookahead():
     disp_time = t
     bars.append(make_bar(t, 2654, 2655, 2644, 2645)); t += 900
 
-    # Before displacement bar completes (now < disp_time + 900): no zone
-    assert len(b2.zones(bars, now=disp_time + 100)) == 0
+    # Before displacement bar completes (now < disp_time + 900): no displacement sell zone
+    assert len([z for z in b2.zones(bars, now=disp_time + 100) if z["direction"] == "SELL"]) == 0
 
     # When displacement completes (now >= disp_time + 900): zone is created!
-    z = b2.zones(bars, now=disp_time + 900)
+    z = [x for x in b2.zones(bars, now=disp_time + 900) if x["direction"] == "SELL"]
     assert len(z) == 1
     sell_zone = z[0]
     assert sell_zone["direction"] == "SELL"
@@ -115,7 +115,7 @@ def test_m15_zone_creation_and_no_lookahead():
     # Test zone invalidation: later candle closes above top (2656)
     later_t = t
     bars.append(make_bar(later_t, 2655, 2660, 2654, 2658)); later_t += 900
-    z_after = b2.zones(bars, now=later_t)
+    z_after = [x for x in b2.zones(bars, now=later_t) if x["direction"] == "SELL"]
     assert z_after[0]["invalidated"] == later_t
 
 
@@ -140,7 +140,7 @@ def test_buy_zone_creation_and_invalidation():
     disp_time = t
     bars.append(make_bar(t, 2654, 2666, 2653, 2665)); t += 900
 
-    z = b2.zones(bars, now=disp_time + 900)
+    z = [x for x in b2.zones(bars, now=disp_time + 900) if x["direction"] == "BUY" and x.get("broken_at") == 2665]
     assert len(z) == 1
     buy_zone = z[0]
     assert buy_zone["direction"] == "BUY"
@@ -149,7 +149,7 @@ def test_buy_zone_creation_and_invalidation():
 
     # Invalidate by candle closing below lower boundary (2652)
     bars.append(make_bar(t + 900, 2653, 2654, 2648, 2650))
-    z_inv = b2.zones(bars, now=t + 1800)
+    z_inv = [x for x in b2.zones(bars, now=t + 1800) if x["id"] == buy_zone["id"]]
     assert z_inv[0]["invalidated"] == t + 1800
 
 

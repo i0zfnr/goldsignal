@@ -156,6 +156,63 @@ def zones(bars, now):
             broken_at=bar["close"], invalidated=invalidated, mitigated=mitigated,
             expired=created + PARAMS["zone_ttl"],
         ))
+
+    # Also extract institutional Demand & Supply bases at confirmed structural swings
+    for row in pending:
+        if row["confirmed"] > now:
+            continue
+        idx = row["index"]
+        b = bars[idx]
+        if row["kind"] == "low":
+            bot = round(row["price"], 2)
+            top = round(min(bot + PARAMS["max_zone_height"], max(b["open"], b["close"])), 2)
+            if top - bot < 1.0:
+                top = round(bot + 3.0, 2)
+            inv = None
+            mit = None
+            for later in bars[idx + 1:]:
+                lt = later["time"] + 900
+                if lt > now:
+                    break
+                if later["close"] < bot:
+                    inv = lt
+                    break
+                if later["low"] <= top and mit is None:
+                    mit = lt
+            result.append(dict(
+                id=f"z_BUY_sw_{b['time']}", direction="BUY", top=top, bottom=bot,
+                candle=b["time"], created=row["confirmed"],
+                power=7 if mit else 8, confidence="HIGH",
+                source=dict(time=b["time"], open=b["open"], high=b["high"], low=b["low"], close=b["close"]),
+                swing=dict(price=row["price"], time=row["time"], confirmed=row["confirmed"]),
+                broken_at=bot, invalidated=inv, mitigated=mit,
+                expired=row["confirmed"] + PARAMS["zone_ttl"],
+            ))
+        elif row["kind"] == "high":
+            top = round(row["price"], 2)
+            bot = round(max(top - PARAMS["max_zone_height"], min(b["open"], b["close"])), 2)
+            if top - bot < 1.0:
+                bot = round(top - 3.0, 2)
+            inv = None
+            mit = None
+            for later in bars[idx + 1:]:
+                lt = later["time"] + 900
+                if lt > now:
+                    break
+                if later["close"] > top:
+                    inv = lt
+                    break
+                if later["high"] >= bot and mit is None:
+                    mit = lt
+            result.append(dict(
+                id=f"z_SELL_sw_{b['time']}", direction="SELL", top=top, bottom=bot,
+                candle=b["time"], created=row["confirmed"],
+                power=7 if mit else 8, confidence="HIGH",
+                source=dict(time=b["time"], open=b["open"], high=b["high"], low=b["low"], close=b["close"]),
+                swing=dict(price=row["price"], time=row["time"], confirmed=row["confirmed"]),
+                broken_at=top, invalidated=inv, mitigated=mit,
+                expired=row["confirmed"] + PARAMS["zone_ttl"],
+            ))
     return result
 
 

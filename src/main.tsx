@@ -190,7 +190,7 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
     <div className="b-analysis-panel" style={{ marginTop: 8 }}>
       {/* 1. Multi-Timeframe Structure - Compact */}
       <details className="insight-details" open>
-        <summary>Multi-Timeframe Structure / Dinamik Struktur MTF</summary>
+        <summary>Multi-Timeframe Structure</summary>
         <div className="compact-mtf-row" style={{ display: "flex", justifyContent: "space-between", marginBlock: "6px 2px", fontSize: ".8125rem" }}>
           <div><strong>M15 Direction:</strong> {biasLabel(m15)}</div>
           <div><strong>M5 Context:</strong> {biasLabel(m5 ?? { direction: "neutral" })}</div>
@@ -204,7 +204,7 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
 
       {/* 2. Zone Rationale - 2 or 3 High-Confidence Zones Only */}
       <details className="insight-details" open>
-        <summary>Zone Rationale / Rasional Zon ({analysis.zones.length} High Confidence)</summary>
+        <summary>Zone Rationale ({analysis.zones.length} High Confidence)</summary>
         <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
           {analysis.zones.length > 0 ? (
             analysis.zones.map(z => {
@@ -234,7 +234,7 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
 
       {/* 3. Action & Validation - Compact */}
       <details className="insight-details" open>
-        <summary>Action & Validation / Pelan Tindakan & Validasi</summary>
+        <summary>Action & Validation</summary>
         <div style={{ marginTop: 6 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <span className="small"><strong>Status:</strong></span>
