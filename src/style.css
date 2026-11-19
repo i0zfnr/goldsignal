@@ -517,3 +517,16 @@ footer a { color: inherit; }
 .crew-face i:first-of-type { left: 16px; }
 .crew-face i:last-of-type { right: 16px; }
 .crew-face b { bottom: 14px; }
+
+.lot-size { max-width: 760px; }
+.lot-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
+.lot-form label { display: grid; gap: 4px; font-size: .75rem; color: var(--muted); }
+.lot-form input, .lot-form select { min-height: 42px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: var(--control-radius); background: var(--panel); color: var(--text); }
+.lot-form button { min-height: 42px; }
+.lot-result { margin: 18px 0 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--selected); text-align: center; }
+.lot-result > span { display: block; font-size: .6875rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.lot-result > strong { display: block; margin: 4px 0; font-size: 2.25rem; font-weight: 650; letter-spacing: .01em; }
+.lot-result > small { color: var(--muted); }
+.lot-stats { margin: 0 0 8px; }

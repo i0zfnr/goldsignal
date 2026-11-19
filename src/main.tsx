@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, CalendarDays, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X, Activity } from "lucide-react";
+import { Bell, CalendarDays, Calculator, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X, Activity } from "lucide-react";
 import { Chart } from "./chart";
 import { Performance } from "./performance";
+import { LotSize } from "./lot";
 import { Access, AdminSettings, adminViews, ApiError, api, type AdminView } from "./access";
 import { InstallButton } from "./install";
 import { CandleClock } from "./candle-clock";
@@ -29,13 +30,14 @@ const frames: Frame[] = ["M1", "M5", "M15", "M30", "H1", "H4"];
 const dashboardViews = [
   ["signal", "Live dashboard"],
   ["performance", "Performance"],
+  ["lot", "Lot size"],
   ["history", "Signal History"],
   ["news", "USD Calendar"],
   ["alerts", "Notifications"],
 ] as const;
 type DashboardView = typeof dashboardViews[number][0] | AdminView | "profile";
 const viewIcons = {
-  signal: ChartCandlestick, performance: ChartNoAxesCombined, history: History, news: CalendarDays,
+  signal: ChartCandlestick, performance: ChartNoAxesCombined, lot: Calculator, history: History, news: CalendarDays,
   alerts: Bell, profile: UserRound, "admin-users": Users, "admin-workers": Activity, "admin-ai": Settings2,
   "admin-chat": MessageSquare, "admin-errors": CircleAlert,
 };
@@ -468,6 +470,9 @@ function App({ role, signOut, expired }: {
       </div>
       <div className="dashboard-view" hidden={view !== "performance"}>
         {data ? <Performance revision={data.history.map(item => `${item.id}:${item.status}`).join(",")} /> : <p role="status">Loading performance…</p>}
+      </div>
+      <div className="dashboard-view" hidden={view !== "lot"}>
+        <LotSize />
       </div>
       <div className="dashboard-view" hidden={view !== "history"}>
           <section className="panel below" id="history" aria-labelledby="history-title">

@@ -1,3 +1,4 @@
+import math
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -261,6 +262,53 @@ def entry_open(signal: str, request: Request, response: Response, demo_alert: st
             result = entry_snapshot(store, item, store.get("state", "market", {}), utc_now())
         store.put("entry_open", secrets.token_hex(16), {"viewer": viewer, "signal": signal, **result})
     return result
+
+
+DEFAULT_LOT_SPEC = dict(symbol=SYMBOL, minimum=0.01, step=0.01, maximum=50.0, contract=100.0,
+                        conversion=1.0, commission=0.0, slippage=0.10, margin_rate=0.0005,
+                        account_currency="USD")
+
+
+class LotRequest(BaseModel):
+    capital: float = Field(gt=0, le=10_000_000)
+    risk_pct: float = Field(gt=0, le=100)
+    stop_pips: float = Field(gt=0, le=100_000)
+
+
+@app.post("/api/lot-size")
+def lot_size(body: LotRequest, request: Request, response: Response):
+    get_id(request, response)
+    with transaction() as store:
+        state = store.get("state", "market", {})
+    spec = {**DEFAULT_LOT_SPEC, **(state.get("spec") or {})}
+    stop_price = body.stop_pips * 0.10
+    contract, conversion = float(spec["contract"]), float(spec["conversion"])
+    slippage, commission = float(spec["slippage"]), float(spec["commission"])
+    minimum, step, maximum = float(spec["minimum"]), float(spec["step"]), float(spec["maximum"])
+    risk_cash = body.capital * body.risk_pct / 100
+    loss_per_lot = stop_price * contract * conversion + slippage * contract * conversion + commission
+    quote = state.get("quote") or {}
+    price = (quote.get("bid", 0) + quote.get("ask", 0)) / 2 if quote.get("bid") and quote.get("ask") else None
+    margin_per_lot = price * contract * conversion * float(spec["margin_rate"]) if price else None
+    if loss_per_lot <= 0:
+        raise HTTPException(422, "Stop distance must be positive.")
+    raw = min(risk_cash / loss_per_lot, maximum)
+    steps = math.floor((raw - minimum) / step + 1e-9)
+    lot = round(minimum + max(0, steps) * step, 2) if raw >= minimum else 0.0
+    warnings = []
+    min_capital = round(minimum * loss_per_lot / (body.risk_pct / 100), 2)
+    if lot == 0:
+        warnings.append(f"Below broker minimum {minimum}. Needs about ${min_capital:,.2f} at this risk.")
+    if raw >= maximum:
+        warnings.append(f"Capped at broker maximum {maximum} lots.")
+    if lot:
+        warnings.append(f"Spread cost is about {slippage / stop_price * 100:.0f}% of the stop distance.")
+    return dict(lot=lot, risk_cash=round(risk_cash, 2), loss_per_lot=round(lot * loss_per_lot, 2),
+                loss_per_lot_unit=round(loss_per_lot, 2), stop_price=round(stop_price, 2),
+                pips=body.stop_pips, min_capital=min_capital,
+                margin=round(lot * margin_per_lot, 2) if margin_per_lot is not None and lot else None,
+                minimum=minimum, step=step, maximum=maximum,
+                spec_source="live" if state.get("spec") else "defaults", warnings=warnings)
 
 
 class PushKeys(BaseModel):
