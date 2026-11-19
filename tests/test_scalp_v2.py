@@ -193,7 +193,7 @@ def test_m5_rejection_and_m1_confirmation():
     assert cand["stop"] == 2654.10
     assert cand["entry"][0] == 2648.0
     assert cand["entry"][1] == 2649.53  # sorted band
-    assert len(cand["targets"]) == 2  # 1.0R and 1.5R
+    assert len(cand["targets"]) == 3  # 1.0R, 1.5R, 2.0R (TP1, TP2, TP3)
     # Deduplication ID check:
     assert cand["id"] == f"b2_{zone['id']}_{rej['time']}_SELL"
 
