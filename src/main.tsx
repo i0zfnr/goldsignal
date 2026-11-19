@@ -7,7 +7,7 @@ import { LotSize } from "./lot";
 import { Access, AdminSettings, adminViews, ApiError, api, type AdminView } from "./access";
 import { InstallButton } from "./install";
 import { CandleClock } from "./candle-clock";
-import type { BAnalysis, BZone, Dashboard, EntryCheck, Frame } from "./types";
+import type { BAnalysis, BZone, Dashboard, EntryCheck, Frame, Signal } from "./types";
 import { applyTheme, readTheme, ThemeToggle } from "./theme";
 import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
 import "@fontsource/geist/latin-400.css";
@@ -451,7 +451,9 @@ function App({ role, signOut, expired }: {
     setView("signal");
     window.scrollTo(0, 0);
   }
-  const signal = data?.active;
+  const b_analysis = data?.b_analysis;
+  const candidateReady = b_analysis?.next_step === "ENTRY READY" && b_analysis.candidate ? b_analysis.candidate : null;
+  const signal: Signal | null = data?.active ?? (candidateReady ? { ...candidateReady, status: "ENTRY READY" } : null);
   const entry = data?.entry_check;
   const session = data?.session;
   const candidate = data?.candidate;
