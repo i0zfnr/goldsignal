@@ -103,83 +103,94 @@ export function Chart({
 
     let animation = 0;
     function positionElements() {
-      if (!state.current) return;
-      const { chart: c, series: s } = state.current;
-      const height = c.panes()[0].getHeight();
-      const inset = c.priceScale("right").width();
-
-      // Position zone boxes inside the chart (matching Image 2 & Image 3)
-      if (zonesOverlayRef.current) {
-        const zoneEls = zonesOverlayRef.current.querySelectorAll<HTMLDivElement>(".zone-band");
-        zoneEls.forEach(el => {
-          const topVal = Number(el.dataset.top);
-          const botVal = Number(el.dataset.bottom);
-          if (!topVal || !botVal) return;
-          const topY = s.priceToCoordinate(topVal);
-          const botY = s.priceToCoordinate(botVal);
-          if (topY == null || botY == null) {
-            el.style.display = "none";
-            return;
-          }
-          el.style.display = "flex";
-          const start = Math.max(0, topY);
-          const size = Math.max(8, Math.min(height, botY) - start);
-          el.style.top = `${start}px`;
-          el.style.height = `${size}px`;
-          el.style.right = `${inset}px`;
-          el.style.left = "0px";
-        });
-
-        // Position candidate entry band
-        const bandEl = zonesOverlayRef.current.querySelector<HTMLDivElement>(".entry-band-box");
-        if (bandEl) {
-          const topVal = Number(bandEl.dataset.top);
-          const botVal = Number(bandEl.dataset.bottom);
-          const topY = topVal ? s.priceToCoordinate(topVal) : null;
-          const botY = botVal ? s.priceToCoordinate(botVal) : null;
-          if (topY == null || botY == null) {
-            bandEl.style.display = "none";
-          } else {
-            bandEl.style.display = "flex";
-            const start = Math.max(0, topY);
-            const size = Math.max(8, Math.min(height, botY) - start);
-            bandEl.style.top = `${start}px`;
-            bandEl.style.height = `${size}px`;
-            bandEl.style.right = `${inset}px`;
-            bandEl.style.left = "0px";
-          }
-        }
+      if (!state.current || !host.current) {
+        animation = requestAnimationFrame(positionElements);
+        return;
       }
+      try {
+        const { chart: c, series: s } = state.current;
+        const hostEl = host.current;
+        const height = hostEl.clientHeight || 400;
+        const plotWidth = c.timeScale().width();
+        const inset = Math.max(50, hostEl.clientWidth - plotWidth);
 
-      // Position trade box if closed trade
-      const trade = closed.current;
-      if (trade && state.current.last !== undefined) {
-        const scale = c.timeScale();
-        const seconds = frameSeconds[frame];
-        const candleTime = (stamp: number) =>
-          (state.current!.last! + Math.floor((stamp - state.current!.last!) / seconds) * seconds) as UTCTimestamp;
-        const left = scale.timeToCoordinate(candleTime(trade.start));
-        const right = scale.timeToCoordinate(candleTime(trade.end));
-        const width = scale.width();
-        const halfBar = scale.options().barSpacing / 2;
-        const fill = s.priceToCoordinate(trade.fill);
-        function drawTrade(box: HTMLDivElement | null, level: number | undefined) {
-          if (!box) return;
-          const y = level === undefined ? null : s.priceToCoordinate(level);
-          box.hidden = left == null || right == null || fill == null || y == null;
-          if (left == null || right == null || fill == null || y == null) return;
-          const start = Math.max(0, left - halfBar);
-          const top = Math.max(0, Math.min(fill, y));
-          box.style.left = `${start}px`;
-          box.style.top = `${top}px`;
-          box.style.width = `${Math.max(0, Math.min(width, right + halfBar) - start)}px`;
-          box.style.height = `${Math.max(0, Math.min(height, Math.max(fill, y)) - top)}px`;
+        // Position zone boxes inside the chart (matching Image 2 & Image 3)
+        if (zonesOverlayRef.current) {
+          const zoneEls = zonesOverlayRef.current.querySelectorAll<HTMLDivElement>(".zone-band");
+          zoneEls.forEach(el => {
+            const topVal = Number(el.dataset.top);
+            const botVal = Number(el.dataset.bottom);
+            if (!topVal || !botVal) return;
+            const topY = s.priceToCoordinate(topVal);
+            const botY = s.priceToCoordinate(botVal);
+            if (topY == null || botY == null) {
+              el.style.display = "none";
+              return;
+            }
+            el.style.display = "flex";
+            const start = Math.max(0, Math.min(topY, botY));
+            const end = Math.min(height, Math.max(topY, botY));
+            const size = Math.max(14, end - start);
+            el.style.top = `${start}px`;
+            el.style.height = `${size}px`;
+            el.style.right = `${inset}px`;
+            el.style.left = "0px";
+          });
+
+          // Position candidate entry band
+          const bandEl = zonesOverlayRef.current.querySelector<HTMLDivElement>(".entry-band-box");
+          if (bandEl) {
+            const topVal = Number(bandEl.dataset.top);
+            const botVal = Number(bandEl.dataset.bottom);
+            const topY = topVal ? s.priceToCoordinate(topVal) : null;
+            const botY = botVal ? s.priceToCoordinate(botVal) : null;
+            if (topY == null || botY == null) {
+              bandEl.style.display = "none";
+            } else {
+              bandEl.style.display = "flex";
+              const start = Math.max(0, Math.min(topY, botY));
+              const end = Math.min(height, Math.max(topY, botY));
+              const size = Math.max(10, end - start);
+              bandEl.style.top = `${start}px`;
+              bandEl.style.height = `${size}px`;
+              bandEl.style.right = `${inset}px`;
+              bandEl.style.left = "0px";
+            }
+          }
         }
-        drawTrade(rewardBox.current, trade.target);
-        drawTrade(riskBox.current, trade.stop);
-      } else {
-        if (rewardBox.current) rewardBox.current.hidden = true;
-        if (riskBox.current) riskBox.current.hidden = true;
+
+        // Position trade box if closed trade
+        const trade = closed.current;
+        if (trade && state.current.last !== undefined) {
+          const scale = c.timeScale();
+          const seconds = frameSeconds[frame];
+          const candleTime = (stamp: number) =>
+            (state.current!.last! + Math.floor((stamp - state.current!.last!) / seconds) * seconds) as UTCTimestamp;
+          const left = scale.timeToCoordinate(candleTime(trade.start));
+          const right = scale.timeToCoordinate(candleTime(trade.end));
+          const width = scale.width();
+          const halfBar = scale.options().barSpacing / 2;
+          const fill = s.priceToCoordinate(trade.fill);
+          function drawTrade(box: HTMLDivElement | null, level: number | undefined) {
+            if (!box) return;
+            const y = level === undefined ? null : s.priceToCoordinate(level);
+            box.hidden = left == null || right == null || fill == null || y == null;
+            if (left == null || right == null || fill == null || y == null) return;
+            const start = Math.max(0, left - halfBar);
+            const top = Math.max(0, Math.min(fill, y));
+            box.style.left = `${start}px`;
+            box.style.top = `${top}px`;
+            box.style.width = `${Math.max(0, Math.min(width, right + halfBar) - start)}px`;
+            box.style.height = `${Math.max(0, Math.min(height, Math.max(fill, y)) - top)}px`;
+          }
+          drawTrade(rewardBox.current, trade.target);
+          drawTrade(riskBox.current, trade.stop);
+        } else {
+          if (rewardBox.current) rewardBox.current.hidden = true;
+          if (riskBox.current) riskBox.current.hidden = true;
+        }
+      } catch (err) {
+        console.error("positionElements error:", err);
       }
       animation = requestAnimationFrame(positionElements);
     }
