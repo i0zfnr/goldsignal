@@ -263,7 +263,14 @@ function App({ role, signOut, expired }: {
   useEffect(() => {
     if (!selected || new URLSearchParams(location.search).get("alert") !== "1") return;
     let current = true;
-    void api<EntryCheck>(`/api/entry-open?signal=${encodeURIComponent(selected)}`, { method: "POST" })
+    const query = new URLSearchParams({ signal: selected });
+    const source = new URLSearchParams(location.search);
+    for (const key of ["demo_alert", "demo_attempt"]) {
+      const value = source.get(key);
+      if (value) query.set(key, value);
+    }
+    navigator.serviceWorker?.controller?.postMessage({ type: "DEMO_FLUSH" });
+    void api<EntryCheck>(`/api/entry-open?${query}`, { method: "POST" })
       .then(check => { if (current) setOpenedEntry({ signal: selected, check }); })
       .catch(() => {});
     return () => { current = false; };

@@ -21,10 +21,12 @@ from .alerts import device_key, queue_test
 from .chat import router as chat_router
 from .diagnostics import record
 from .strategy import executable, gate
+from . import demo_account, demo_phone
 
 
 @asynccontextmanager
 async def lifespan(app):
+    demo_account.assert_isolated()
     migrate()
     yield
 
@@ -32,6 +34,7 @@ async def lifespan(app):
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
 app.include_router(chat_router)
+app.include_router(demo_phone.router)
 COOKIE = "goldsignal_viewer"
 
 
@@ -45,6 +48,9 @@ async def invalid_request(request, exc):
 async def private_responses(request, call_next):
     if not request.url.path.startswith("/api/"):
         return await call_next(request)
+    if demo_account.enabled() and request.url.path == "/api/admin/chat":
+        return JSONResponse({"detail": "AI calls are disabled in this demo account study."}, status_code=403,
+                            headers={"Cache-Control": "no-store"})
     try:
         response = await call_next(request)
     except Exception:
@@ -166,35 +172,55 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         if status == "MARKET CLOSED" and window["open"]:
             window = session(window["cutoff"])
         def public(item):
-            return {key: value for key, value in item.items() if key not in ("eligible", "costs")}
+            return {key: value for key, value in item.items() if key not in ("eligible", "costs", "demo_token")}
+        visible_alerts = [alert for alert in store.all("alert") if
+                          (store.get("push", alert["profile"], {}).get("owner") == profile_id
+                           if demo_account.enabled() else alert["profile"] == "shared")]
         return dict(
-            symbol=SYMBOL, mode=MODE, status=status, clock=now, quote=quote, heartbeat=state.get("heartbeat"),
+            symbol=SYMBOL, mode=MODE, status="DEMO" if demo_account.enabled() and status == "LIVE" else status, clock=now, quote=quote, heartbeat=state.get("heartbeat"),
             error=state.get("error"), revision=state.get("revision", 0), candles=store.chart(after, frame), frame=frame,
             scan=state.get("scan") if status != "STALE" else None,
             scalp_scan=state.get("scalp_scan") if status != "STALE" else None,
             session=window, active=public(selected) if selected else None,
-            entry_check=entry_snapshot(store, selected, state, wall) if selected else None,
+            entry_check=(demo_account.check(store, selected, profile_id, wall, quote=quote, spec=state.get("spec"))
+                         if demo_account.enabled() and selected and not stale else
+                         entry_snapshot(store, selected, state, wall) if selected else None),
             history=[public(item) for item in history[:15]],
             events=sorted((e for e in store.all("event") if selected and e["signal"] == selected["id"]), key=lambda e: e["time"]),
             candidate=public(candidate) if candidate else None,
             calendar={**calendar, "events": sorted(
                 (row for row in calendar.get("events", []) if row["time"] >= now),
                 key=lambda row: row["time"])[:16], "restriction": restriction(calendar, now, demo)},
-            alerts=sorted((a for a in store.all("alert") if a["profile"] == "shared"),
-                          key=lambda a: a["time"], reverse=True)[:20],
+            alerts=[public(a) for a in sorted(visible_alerts, key=lambda a: a["time"], reverse=True)[:20]],
             push_key=os.getenv("VAPID_PUBLIC_KEY"), push_enabled=bool(store.get("push", profile_id)),
             metrics={"with_news": metrics(history), "without_news": metrics(store.all("shadow"))},
         )
 
 
 @app.post("/api/entry-open")
-def entry_open(signal: str, request: Request, response: Response):
+def entry_open(signal: str, request: Request, response: Response, demo_alert: str | None = None,
+               demo_attempt: str | None = None):
+    opened_at = utc_now()
     viewer = get_id(request, response)
     with transaction() as store:
         item = store.get("signal", signal)
         if not item:
             raise HTTPException(404, "Signal not found.")
-        result = entry_snapshot(store, item, store.get("state", "market", {}), utc_now())
+        if demo_account.enabled():
+            alert = store.get("alert", demo_alert) if demo_alert else None
+            subscription = store.get("push", alert["profile"], {}) if alert else {}
+            submission = store.get("demo_submit", demo_attempt) if demo_attempt else None
+            if (not alert or alert.get("signal") != signal or subscription.get("owner") != viewer or
+                    not submission or submission["alert"] != demo_alert):
+                raise HTTPException(409, "Open the account-specific demo notification to check this entry.")
+            previous_open = store.get("demo_open", demo_account.key(viewer, signal))
+            result = previous_open["check"] if previous_open else demo_account.check(store, item, viewer, utc_now())
+            demo_phone.record(store, demo_alert, demo_attempt, "server_entry_open", opened_at=opened_at, check=result)
+            if not previous_open:
+                store.put("demo_open", demo_account.key(viewer, signal), dict(check=result, alert=demo_alert, attempt=demo_attempt))
+                demo_account.open_entry(store, item, viewer, alert["profile"], utc_now(), result)
+        else:
+            result = entry_snapshot(store, item, store.get("state", "market", {}), utc_now())
         store.put("entry_open", secrets.token_hex(16), {"viewer": viewer, "signal": signal, **result})
     return result
 

@@ -1,0 +1,41 @@
+id,day,outcome,first_blocker,blocked_stage,actual_submission,otherwise_actionable,executable_entry,risk_budget,minimum_lot_cash_loss,three_exit_minimum_lots,three_exit_cash_loss,three_exit_risk_fits
+s1794490500S,2026-11-12,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3905.49,1.0,3.1400000000002546,0.03,9.420000000000764,False
+s1794492600S,2026-11-12,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3883.8,1.0,2.4599999999999635,0.03,7.379999999999891,False
+s1794495000S,2026-11-12,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3883.14,1.0,4.229999999999945,0.03,12.689999999999834,False
+s1794516600S,2026-11-12,blocked,No valid submission before expiry,price_or_submission,,False,,,,,,
+s1794517800S,2026-11-12,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794584100S,2026-11-13,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3876.45,1.0,2.400000000000018,0.03,7.200000000000054,False
+s1794587100B,2026-11-13,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3881.86,1.0,2.019999999999909,0.03,6.059999999999727,False
+s1794576000S,2026-11-13,blocked,Executable quote is outside the entry zone,price_or_submission,,False,,,,,,
+s1794594900S,2026-11-13,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794595500S,2026-11-13,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794595800S,2026-11-13,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794598500S,2026-11-13,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794601800B,2026-11-13,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794840600B,2026-11-16,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3886.9,1.0,2.9100000000002364,0.03,8.73000000000071,False
+s1794843600S,2026-11-16,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3861.9,1.0,1.8800000000000363,0.03,5.640000000000109,False
+s1794845100S,2026-11-16,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3858.07,1.0,1.2799999999996727,0.03,3.839999999999018,False
+s1794860400S,2026-11-16,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3859.12,1.0,2.0600000000003273,0.03,6.180000000000982,False
+s1794856200B,2026-11-16,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794861300S,2026-11-16,blocked,Executable quote is outside the entry zone,price_or_submission,,False,,,,,,
+s1794862800S,2026-11-16,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794863100S,2026-11-16,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794864900B,2026-11-16,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794865200B,2026-11-16,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794926100B,2026-11-17,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3868.78,1.0,5.210000000000418,0.03,15.630000000001255,False
+s1794928500S,2026-11-17,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3855.58,1.0,1.7400000000001636,0.03,5.220000000000491,False
+s1794932400S,2026-11-17,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3866.15,1.0,3.17,0.03,9.51,False
+s1794938100S,2026-11-17,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3862.66,1.0,1.5100000000001454,0.03,4.530000000000436,False
+s1794940800S,2026-11-17,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3857.66,1.0,2.220000000000182,0.03,6.6600000000005455,False
+s1794922500S,2026-11-17,blocked,Calendar pause: Retail sales,price_or_submission,,False,,,,,,
+s1794938400S,2026-11-17,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1794939000S,2026-11-17,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,
+s1795008300B,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3773.29,1.0,2.5300000000001273,0.03,7.590000000000382,False
+s1795008900B,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3777.0,1.0,3.2600000000001454,0.03,9.780000000000436,False
+s1795009500B,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3783.22,1.0,2.789999999999891,0.03,8.369999999999672,False
+s1795009800B,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3787.34,1.0,2.2700000000003637,0.03,6.810000000001091,False
+s1795014300S,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,True,3759.58,1.0,4.769999999999909,0.03,14.309999999999725,False
+s1795017900S,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3747.84,1.0,2.599999999999836,0.03,7.799999999999509,False
+s1795019700S,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3736.33,1.0,2.519999999999909,0.03,7.559999999999727,False
+s1795034400B,2026-11-18,risk_blocked,Minimum lot exceeds your risk limit,before_submission,,False,3731.66,1.0,1.3600000000000545,0.03,4.0800000000001635,False
+s1795038300S,2026-11-18,blocked,Spread exceeds configured limit,price_or_submission,,False,,,,,,

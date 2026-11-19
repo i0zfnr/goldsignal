@@ -21,6 +21,7 @@ from .market import MT5, Replay
 from .scalp import scalp_candidate
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
+from . import demo_account
 
 log = logging.getLogger(__name__)
 DEMO = MODE == "demo"
@@ -191,6 +192,12 @@ def record_event(store, signal, name, ts):
 
 def process(source, step, cursor, calendar, revision):
     snapshot = source.read(cursor, step, utc_now())
+    if demo_account.enabled():
+        import hashlib
+        account = source.mt5.account_info()
+        fingerprint = hashlib.sha256(f"{account.login}:{account.server}".encode()).hexdigest() if account else None
+        if not account or account.trade_mode != 0 or fingerprint != os.getenv("DEMO_TERMINAL_FINGERPRINT"):
+            raise RuntimeError("Demo feed account changed; paper tracking paused")
     now = snapshot["now"]
     if DEMO:
         calendar = news.refresh(True, now, calendar)
@@ -201,7 +208,14 @@ def process(source, step, cursor, calendar, revision):
     scalp_scan = "Waiting for the M5 and M1 feed."
     with transaction() as store:
         gemini = store.get("ai", "gemini", {})
+        if demo_account.enabled():
+            gemini = {}
         stopped = news.manual_pause(store, utc_now())
+        if demo_account.enabled():
+            demo_account.track(store, snapshot)
+            calendar_id = str(calendar.get("refreshed", "initial"))
+            if not store.get("demo_calendar", calendar_id):
+                store.put("demo_calendar", calendar_id, dict(observed_at=utc_now(), calendar=calendar))
         if "M5" in frames and "M1" in frames:
             def recent(frame):
                 bars = {bar["time"]: bar for bar in store.chart(frame=frame, limit=12)}
@@ -209,6 +223,11 @@ def process(source, step, cursor, calendar, revision):
                 return [bars[time] for time in sorted(bars)[-12:]]
             scalp, scalp_scan = scalp_candidate(snapshot, recent("M5"), recent("M1"))
         pending = [item for item in (candidate, scalp) if item and not store.get("signal", item["id"])]
+        if demo_account.enabled():
+            for item in pending:
+                if item.get("strategy") and not store.get("demo_candidate", item["id"]):
+                    store.put("demo_candidate", item["id"], dict(detected_at=utc_now(),
+                              confirmation_at=item["evidence"]["trigger"]["time"] + 60))
         previous = {item["id"]: store.get("candidate", item["id"]) for item in pending}
         recent_entries = [signal["created"] for signal in store.all("signal")
                           if signal["created"] > now - 3600] if pending else []
@@ -265,6 +284,8 @@ def process(source, step, cursor, calendar, revision):
             decision, reason = (("WAIT", scan["reason"]) if stopped else
                                 evaluate(item, quote, now, calendar, review_gate))
             baseline, baseline_reason = gate(item, quote, now)
+            if demo_account.enabled() and baseline == "CONFIRM" and not store.get("demo_eligible", key):
+                store.put("demo_eligible", key, dict(observed_at=utc_now(), quote_time=quote["time"]))
             capped = sum(stamp > now - 3600 for stamp in recent_entries) >= ENTRY_LIMIT_PER_HOUR
             if not stopped and capped and baseline == "CONFIRM":
                 decision, reason = "WAIT", ENTRY_LIMIT_REASON
@@ -300,6 +321,7 @@ def process(source, step, cursor, calendar, revision):
 
 
 def run():
+    demo_account.assert_isolated()
     if MODE not in ("demo", "mt5"):
         raise ValueError("MARKET_SOURCE must be demo or mt5")
     migrate()
