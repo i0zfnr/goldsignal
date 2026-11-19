@@ -64,7 +64,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
           <label>{isAdmin ? "Password" : "Access key"}
             <input name="credential" type="password" autoComplete={isAdmin ? "current-password" : "off"} required maxLength={256} />
           </label>
-          <button className="primary" disabled={busy}>{busy ? "Signing inâ€¦" : "Sign in"}</button>
+          <button className="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
           {error && <p className="warn" role="alert">{error}</p>}
         </form>
       </section>
@@ -129,7 +129,7 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
       </div>
       <form className="access-form" onSubmit={submit}>
         <label>Message<textarea value={message} onChange={event => setMessage(event.target.value)} rows={3} required disabled={busy} /></label>
-        <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Geminiâ€¦" : "Send message"}</button>
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Gemini…" : "Send message"}</button>
       </form>
       {error && <p className="warn" role="alert">{error}</p>}
     </> : <EmptyState>Save your API key in Gemini review to start chatting.</EmptyState>}
@@ -159,10 +159,10 @@ function BackendLog() {
 
   return <section className="panel access-panel admin-chat" aria-labelledby="backend-log-title">
     <PanelHeading title="Backend error log" id="backend-log-title" as="h3">
-      <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshingâ€¦" : "Refresh log"}</button>
+      <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshing…" : "Refresh log"}</button>
     </PanelHeading>
     {error && <p className="warn" role="alert">{error}{entries && " Showing last loaded entries."}</p>}
-    {!entries && busy && <LoadingState>Loading backend logâ€¦</LoadingState>}
+    {!entries && busy && <LoadingState>Loading backend log…</LoadingState>}
     {entries?.length === 0 && <EmptyState>No backend errors recorded yet.</EmptyState>}
     {!!entries?.length && <ol className="backend-log">
       {entries.map((entry, index) => <li key={`${entry.time}-${index}`}>
@@ -235,7 +235,7 @@ function WorkerStatus() {
     return () => clearInterval(timer);
   }, []);
 
-  const age = (value: number | null) => value == null ? "â€“" : `${value}s`;
+  const age = (value: number | null) => value == null ? "–" : `${value}s`;
   return <section className="panel access-panel" aria-labelledby="worker-status-title">
     <PanelHeading title="Worker pipeline" id="worker-status-title" as="h3">
       <Badge tone={report?.error ? "negative" : report && (report.heartbeat_age ?? 99) <= 30 ? "positive" : "neutral"}>
@@ -243,7 +243,7 @@ function WorkerStatus() {
       </Badge>
     </PanelHeading>
     {error && <p className="warn" role="alert">{error}</p>}
-    {!report && !error && <LoadingState>Loading worker statusâ€¦</LoadingState>}
+    {!report && !error && <LoadingState>Loading worker status…</LoadingState>}
     {report && <>
       <dl className="report-stats">
         <div><dt>Feed</dt><dd>{report.symbol} · {report.mode} · rev {report.revision}</dd></div>
@@ -373,7 +373,7 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
         <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
       </section>
       <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
-      </> : !error && view !== "admin-errors" && <LoadingState>Loading settingsâ€¦</LoadingState>}
+      </> : !error && view !== "admin-errors" && <LoadingState>Loading settings…</LoadingState>}
       {view === "admin-errors" && <BackendLog />}
       {view === "admin-workers" && <WorkerStatus />}
     </section>;
@@ -404,7 +404,7 @@ export function Access({ dashboard }: { dashboard: (
   if (error) return <><AccessHeader /><main className="access-page">
     <p className="warn" role="alert">{error}</p><button onClick={load}>Retry</button>
   </main></>;
-  if (role === undefined) return <><AccessHeader /><main className="access-page"><p role="status">Checking accessâ€¦</p></main></>;
+  if (role === undefined) return <><AccessHeader /><main className="access-page"><p role="status">Checking access…</p></main></>;
   if (isAdmin && role !== "admin") return <LoginPage key={role ?? "guest"} isAdmin complete={setRole} />;
   if (!role) return <LoginPage isAdmin={false} complete={setRole} />;
   return dashboard(role, signOut, () => setRole(null));
