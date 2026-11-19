@@ -1,5 +1,8 @@
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
+import { createHash } from "node:crypto";
+
+const serviceWorkerVersion = createHash("sha256").update(await readFile("public/sw.js")).digest("hex").slice(0, 16);
 
 const { metafile } = await build({
   entryPoints: { dashboard: "src/main.tsx" },
@@ -11,6 +14,7 @@ const { metafile } = await build({
   jsx: "automatic",
   loader: { ".woff": "file", ".woff2": "file" },
   metafile: true,
+  define: { __SW_VERSION__: JSON.stringify(serviceWorkerVersion) },
 });
 const assets = Object.keys(metafile.outputs).map(path => path.replace(/^dist/, ""));
 const script = assets.find(path => path.endsWith(".js"));

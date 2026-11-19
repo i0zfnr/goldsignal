@@ -15,6 +15,9 @@ import "@fontsource/geist/latin-600.css";
 import "@fontsource/geist/latin-700.css";
 import "./style.css";
 
+declare const __SW_VERSION__: string;
+const serviceWorkerUrl = `/sw.js?v=${__SW_VERSION__}`;
+
 const number = new Intl.NumberFormat("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const myt = new Intl.DateTimeFormat("en-MY", {
   timeZone: "Asia/Kuala_Lumpur", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
@@ -187,7 +190,7 @@ function Alerts({ data }: { data: Dashboard }) {
       if (!status?.enabled && await Notification.requestPermission() !== "granted") {
         throw new Error("Allow notifications for Goldsignal in your browser or device settings, then try again.");
       }
-      const registration = await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.register(serviceWorkerUrl, { updateViaCache: "none" });
       if (status?.enabled) {
         const subscription = await registration.pushManager.getSubscription();
         if (subscription) {
@@ -514,7 +517,7 @@ function App({ role, signOut, expired }: {
 }
 
 if ("serviceWorker" in navigator) {
-  void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  void navigator.serviceWorker.register(serviceWorkerUrl, { updateViaCache: "none" }).catch(() => {});
 }
 
 applyTheme(readTheme());
