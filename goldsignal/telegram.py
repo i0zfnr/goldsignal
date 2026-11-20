@@ -2,11 +2,14 @@
 
 import logging
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import httpx
 
+from .diagnostics import record, record_in
+from .grades import signal_grade
 from .store import transaction
 
 log = logging.getLogger(__name__)
@@ -16,8 +19,21 @@ dispatch_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ryu-dispat
 _ryu_stats = {"count": 0, "last_at": 0.0}
 
 
-def dispatch_telegram(text: str):
+def dispatch_telegram(text: str, category: str = "ADMIN", store=None):
     if not text:
+        return None
+
+    def policy_log(message, level):
+        if store is not None:
+            record_in(store, "Notification policy", message, level=level)
+        else:
+            record("Notification policy", message, level=level)
+
+    if category not in ("SIGNAL", "PRICE_ENTRY_ZONE"):
+        policy_log(f"Suppressed {category} Telegram delivery: {text.splitlines()[0][:160]}", "info")
+        return None
+    if category == "SIGNAL" and "ENTRY SIGNAL" in text and "[A" not in text:
+        policy_log(f"Suppressed non-A/A+ entry signal: {text.splitlines()[0][:160]}", "warning")
         return None
     _ryu_stats["count"] += 1
     _ryu_stats["last_at"] = datetime.now().timestamp()
@@ -72,9 +88,9 @@ def format_entry(signal: dict, now: float) -> str:
     stop = signal.get("stop", signal.get("initial_stop", 0))
     targets = signal.get("targets", [])
     lane = signal.get("lane", "B")
-    strategy = signal.get("strategy", "Liquidity Scalp")
-    grade = signal.get("grade") or (signal.get("evidence") or {}).get("entry_grade") or "A"
-    grade_stars = "⭐️⭐️⭐️⭐️ (Highest)" if grade == "A+" else "⭐️⭐️⭐️ (High)" if grade == "A" else "⭐️⭐️ (Good)" if grade == "B+" else "⭐️ (Standard)"
+    strategy = signal.get("strategy", "M15 Trend Rejection")
+    grade = signal_grade(signal) or "UNRATED"
+    grade_stars = "⭐️⭐️⭐️⭐️ (Highest)" if grade == "A+" else "⭐️⭐️⭐️ (High)" if grade == "A" else "UNRATED"
     time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
 
     icon = "🔴" if direction == "SELL" else "🟢"
@@ -99,33 +115,16 @@ def format_zone_touch(direction: str, zone: dict, price: float, now: float) -> s
     time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
     is_sell = direction == "SELL"
     icon = "🔴" if is_sell else "🟢"
-    zone_type = "SUPPLY ZONE (Resistance)" if is_sell else "DEMAND ZONE (Support)"
+    zone_type = "SUPPLY ENTRY ZONE" if is_sell else "DEMAND ENTRY ZONE"
     return (
-        f"🔔 <b>GOLDSIGNAL · ZONE WATCH ONLY</b>\n"
-        f"{icon} <b>XAUUSD · In M15 {zone_type}</b>\n"
+        f"🔔 <b>GOLDSIGNAL · PRICE IN ENTRY ZONE</b>\n"
+        f"{icon} <b>XAUUSD · M15 {zone_type}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"📍 <b>Zone Bounds:</b> <code>{zone.get('bottom', 0):.2f} – {zone.get('top', 0):.2f}</code>\n"
+        f"📍 <b>Entry Zone:</b> <code>{zone.get('bottom', 0):.2f} – {zone.get('top', 0):.2f}</code>\n"
         f"💲 <b>Live Price:</b> <code>{price:.2f}</code>\n"
-        f"⭐ <b>Zone Power:</b> <code>{zone.get('power', 8)}/10</code> ({zone.get('confidence', 'HIGH')})\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🕒 <b>Time:</b> {time_str} MYT\n"
-        f"⛔ <i>Research watch only. DO NOT ENTER — no trade signal has been published.</i>"
-    )
-
-
-def format_headsup(direction: str, zone: dict, rejection: dict, now: float) -> str:
-    time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
-    icon = "🔻" if direction == "SELL" else "🔺"
-    return (
-        f"⚠️ <b>GOLDSIGNAL · HEADS-UP (SETUP FORMING)</b>\n"
-        f"{icon} <b>XAUUSD · M5 Rejection at M15 Zone</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📍 <b>Watch Zone:</b> <code>{zone.get('bottom', 0):.2f} – {zone.get('top', 0):.2f}</code>\n"
-        f"🕯️ <b>M5 Candle Close:</b> <code>{rejection.get('close', 0):.2f}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"⏳ <b>Status:</b> Waiting for M1 confirmation break.\n"
-        f"🕒 <b>Time:</b> {time_str} MYT\n"
-        f"👉 <i>Open your MT5 / broker terminal now to get ready.</i>"
+        f"⛔ <i>NOT A TRADE SIGNAL. DO NOT ENTER — no entry signal has been published.</i>"
     )
 
 
@@ -138,7 +137,8 @@ def format_event(signal: dict, name: str, ts: float) -> str:
 
     pips_str = ""
     if fill and "TP" in name:
-        idx = int(name.replace("TP", "")) - 1 if name.replace("TP", "").isdigit() else 0
+        match = re.match(r"TP(\d+)", name)
+        idx = int(match.group(1)) - 1 if match else 0
         targets = signal.get("targets", [])
         tp_price = targets[idx] if idx < len(targets) else fill
         pips = round(abs(tp_price - fill) / 0.10, 1)
@@ -170,7 +170,7 @@ def format_event(signal: dict, name: str, ts: float) -> str:
         display_name = name.replace("_", " ")
 
     lines = [
-        f"{status_icon} <b>GOLDSIGNAL · {display_name} HIT{pips_str}!</b>",
+        f"{status_icon} <b>GOLDSIGNAL · SIGNAL UPDATE · {display_name} HIT{pips_str}!</b>",
         f"<b>{symbol} {direction}</b>{fill_info}",
         f"━━━━━━━━━━━━━━━━━━",
         f"📌 <b>Trailing Stop:</b> <code>{stop:.2f}</code>",

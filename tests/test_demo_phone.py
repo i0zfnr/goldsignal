@@ -27,7 +27,7 @@ def demo(tmp_path, monkeypatch):
 
 def signal():
     return dict(id="fixture", symbol=SYMBOL, direction="BUY", status="PENDING", hits=0, fill=None,
-                strategy="M5 setup / M1 entry", entry=[99.5, 100.3], initial_stop=99.3, stop=99.3,
+                grade="A", strategy="M5 setup / M1 entry", entry=[99.5, 100.3], initial_stop=99.3, stop=99.3,
                 targets=[101, 102, 103], expiry=200, created=90)
 
 

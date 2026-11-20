@@ -675,7 +675,7 @@ function WorkerStatus() {
         </section>;
       })}
       <p className="small muted" style={{ marginTop: 14 }}>
-        Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C trades Asian range liquidity sweeps.
+        Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Only A/A+ grades publish; Strategy C monitors Asian range liquidity sweeps as research watch only.
       </p>
     </>}
   </section>;
@@ -726,7 +726,7 @@ function TelegramPanel({ action, busy }: { action: (w: () => Promise<void>) => v
       <PanelHeading title="Telegram Channel Delivery" as="h3">
         <Badge tone={tg?.configured ? "positive" : "neutral"}>{tg?.configured ? "Connected" : "Not configured"}</Badge>
       </PanelHeading>
-      <p className="muted small">Instant 0ms alert broadcast for entry ready signals, TP/SL lifecycle, and early M5 heads-up warnings.</p>
+      <p className="muted small">Broadcasts only A/A+ entry signals, TP/SL signal updates, and price-in-entry-zone alerts. Research and system notices stay in admin diagnostics.</p>
       {tg?.configured && (
         <p className="small good" style={{ margin: "6px 0" }}>
           Active channel: <code>{tg.chat_id}</code> ({tg.masked_token})

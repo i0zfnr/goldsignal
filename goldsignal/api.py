@@ -18,9 +18,10 @@ from .config import MARKET_SESSIONS, MODE, MY, QUOTE_FUTURE_TOLERANCE, STALE_SEC
 from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import admin, identity, router
-from .alerts import device_key, queue_test
+from .alerts import USER_ALERT_KINDS, device_key, purge_admin_alerts, queue_test
 from .chat import router as chat_router
 from .diagnostics import record
+from .grades import publishable_grade
 from .lifecycle import is_realized
 from .strategy import executable, gate
 from .sessions import summary as session_summary
@@ -32,6 +33,7 @@ from . import demo_account, demo_phone
 async def lifespan(app):
     demo_account.assert_isolated()
     migrate()
+    purge_admin_alerts()
     yield
 
 
@@ -173,7 +175,7 @@ def performance(request: Request, response: Response, period: Literal["day", "we
     get_id(request, response)
     with transaction() as store:
         clock = store.get("state", "market", {}).get("now", utc_now()) if MODE == "demo" else utc_now()
-        signals = store.all("signal")
+        signals = [s for s in store.all("signal") if s.get("status") != "DAILY_WATCH"]
     today = datetime.fromtimestamp(clock, MY).date()
     start = {"day": today, "week": today - timedelta(days=today.weekday()),
              "month": today.replace(day=1), "all": None}[period]
@@ -259,9 +261,13 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         status = "STALE" if state.get("error") or wall - state.get("heartbeat", 0) > 30 else (
             "MARKET CLOSED" if state.get("closed") else "STALE" if stale else "DEMO" if demo else "LIVE"
         )
-        history = sorted(store.all("signal"), key=lambda s: s["created"], reverse=True)
+        history = sorted((s for s in store.all("signal")
+                          if s.get("status") != "DAILY_WATCH" and publishable_grade(s)),
+                         key=lambda s: s["created"], reverse=True)
         active = next((s for s in history if s["status"] in ("PENDING", "FILLED")), None)
         selected = store.get("signal", signal) if signal else active
+        if selected and (selected.get("status") == "DAILY_WATCH" or not publishable_grade(selected)):
+            selected = None
         candidate = max(store.all("candidate"), key=lambda row: row["evaluated"], default=None)
         calendar = state.get("calendar", {})
         window = session(now)
@@ -269,7 +275,9 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
             window = session(window["cutoff"])
         def public(item):
             return {key: value for key, value in item.items() if key not in ("eligible", "costs", "demo_token")}
-        visible_alerts = [alert for alert in store.all("alert") if
+        visible_alerts = [alert for alert in store.all("alert") if alert.get("kind") in USER_ALERT_KINDS and
+                          (not alert.get("signal") or
+                           publishable_grade(store.get("signal", alert["signal"]) or {})) and
                           (store.get("push", alert["profile"], {}).get("owner") == profile_id
                            if demo_account.enabled() else alert["profile"] == "shared")]
         b_analysis = state.get("b_analysis") if status != "STALE" else None
@@ -539,7 +547,7 @@ def test_telegram(request: Request):
         f"━━━━━━━━━━━━━━━━━━\n"
         f"✅ Telegram channel alerts are connected!\n"
         f"🕒 Time: {now_str} MYT\n"
-        f"⚡ Real-time signals, TP/SL updates & heads-up alerts will be posted here."
+        f"⚡ Only A/A+ entry signals, TP/SL signal updates & price-in-entry-zone alerts are posted here."
     )
     ok = send_telegram(msg)
     if not ok:

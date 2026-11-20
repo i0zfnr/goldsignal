@@ -587,15 +587,50 @@ def test_research_gate_requires_high_edge_for_strategy_b():
     assert reason is None and edge == 65 and grade_ok is True and aligned is True
 
     legacy = {"strategy": "M5 setup / M1 entry", "grade": None, "direction": "BUY", "session": "New York"}
-    assert worker.research_gate(legacy, {"shinra": {"edge_score": 0}},
-                                {"regime": "EXPANSION"}, [], 0)[0] is None
+    assert "Only A and A+ signals publish" in worker.research_gate(
+        legacy, {"shinra": {"edge_score": 0}}, {"regime": "EXPANSION"}, [], 0)[0]
 
 
-def test_zone_touch_message_is_watch_only():
+def test_only_a_and_a_plus_grades_are_publishable():
+    assert worker.signal_grade({"evidence": {"grade": "Aligned"}}) == "A+"
+    assert worker.signal_grade({"grade": "A · Liquidity scalp"}) == "A"
+    assert worker.signal_grade({"grade": "B+ · Liquidity scalp"}) == "B+"
+    assert worker.signal_grade({"evidence": {"grade": "M5/M1 scalp"}}) == "A"
+    assert worker.signal_grade({"grade": "C · Asian range fade"}) == "C"
+    assert worker.publishable_grade({"evidence": {"grade": "Aligned"}}) is True
+    assert worker.publishable_grade({"grade": "C · Asian range fade"}) is False
+
+
+def test_internal_lifecycle_events_stay_in_admin(db, monkeypatch):
+    delivered = []
+    monkeypatch.setattr(worker, "dispatch_telegram", lambda text, **_kwargs: delivered.append(text))
+    signal = dict(id="x", symbol="XAUUSD", direction="BUY", entry=[100, 101], stop=100,
+                  reference=100, targets=[102], expiry=9999999, fill=100, hits=0, status="FILLED",
+                  grade="A")
+    with store.transaction() as data:
+        worker.record_event(data, signal, "EXPIRED", 123)
+        worker.record_event(data, signal, "TP1", 123)
+        worker.record_event(data, {**signal, "id": "y", "grade": "B+"}, "TP2", 456)
+    assert len(delivered) == 1 and "TP1" in delivered[0]
+
+
+def test_send_pending_skips_research_alerts(db, monkeypatch):
+    monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", "unused.pem")
+    monkeypatch.setattr(alerts, "webpush", lambda *_args, **_kwargs: pytest.fail("research alert was delivered"))
+    with store.transaction() as data:
+        data.put("push", "device", {"endpoint": "endpoint", "keys": {}})
+        data.put("alert", "research", dict(id="research", profile="device", signal=None, kind="HOLD",
+                                           time=0, valid_until=9999999, title="Research", body="Watch",
+                                           url="/", delivery="queued", attempts=0))
+    alerts.send_pending(0)
+
+
+def test_zone_touch_message_is_not_a_signal():
     from goldsignal.telegram import format_zone_touch
 
     message = format_zone_touch("BUY", {"bottom": 100, "top": 101, "power": 8}, 100.5, 0)
-    assert "WATCH ONLY" in message and "DO NOT ENTER" in message
+    assert "PRICE IN ENTRY ZONE" in message and "NOT A TRADE SIGNAL" in message
+    assert "DO NOT ENTER" in message
 
 
 def test_performance_counts_partial_tp_immediately(db):

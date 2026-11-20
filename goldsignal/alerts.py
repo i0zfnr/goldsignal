@@ -7,6 +7,7 @@ from pywebpush import WebPushException, webpush
 
 from .config import MODE, utc_now
 from .diagnostics import record
+from .grades import publishable_grade
 from .news import manual_pause, restriction
 from .store import transaction
 from .strategy import gate
@@ -15,6 +16,33 @@ from urllib.parse import urlencode
 import secrets
 
 log = logging.getLogger(__name__)
+ADMIN_ONLY_ALERT_KINDS = ("DAILY", "HEADS_UP", "HOLD", "RESEARCH", "WATCH", "EXPIRED", "TIMED_OUT")
+USER_ALERT_KINDS = ("ENTRY", "FILLED", "TP1", "TP2", "TP3", "STOPPED", "TP1_SECURED", "TP2_SECURED",
+                    "SL", "ENTRY_ZONE", "TEST")
+
+
+def purge_admin_alerts():
+    removed = 0
+    normalized = 0
+    with transaction() as store:
+        for key, alert in list(store.items("alert")):
+            linked = store.get("signal", alert["signal"]) if alert.get("signal") else None
+            if alert.get("kind") in ADMIN_ONLY_ALERT_KINDS or (linked and not publishable_grade(linked)):
+                store.delete("alert", key)
+                removed += 1
+                continue
+            if alert.get("kind") == "ZONE_TOUCH":
+                alert["kind"] = "ENTRY_ZONE"
+                alert["title"] = str(alert.get("title", "")).replace("Zone watch only", "PRICE IN ENTRY ZONE")
+                if "PRICE IN ENTRY ZONE" not in alert["title"]:
+                    alert["title"] = "PRICE IN ENTRY ZONE · XAUUSD"
+                alert["body"] = "Price is inside the M15 entry zone. NOT a trade signal — no entry has been published."
+                store.put("alert", key, alert)
+                normalized += 1
+    if removed or normalized:
+        record("Notification policy",
+               f"Removed {removed} research/admin notifications; normalized {normalized} entry-zone notices.",
+               level="info")
 
 
 def device_key(endpoint):
@@ -39,7 +67,8 @@ def add_alert(store, profile_id, signal, kind, ts):
     if demo_account.enabled() and profile_id != "shared" and kind != "ENTRY":
         return
     entry = kind == "ENTRY"
-    label = " · M5/M1 scalp" if signal.get("strategy") else ""
+    label = (" · M5/M1 scalp" if signal.get("strategy") == "M5 setup / M1 entry" else
+             f" · {signal['strategy']}" if signal.get("strategy") else "")
     title = f"{'DEMO · ' if MODE == 'demo' else ''}{signal['symbol']} {signal['direction']}{label} · {kind}"
     body = f"Entry {signal['entry'][0]:.2f}–{signal['entry'][1]:.2f} · SL {signal['stop']:.2f}" if entry else (
         f"Simulated tracking · stop {signal['stop']:.2f}"
@@ -59,25 +88,26 @@ def send_pending(now):
     if not private:
         return
     with transaction() as store:
-        alerts = [a for a in store.all("alert") if a["delivery"] == "queued"][:20]
+        alerts = [a for a in store.all("alert") if a["delivery"] == "queued" and
+                  a.get("kind") in USER_ALERT_KINDS][:20]
     for alert in alerts:
         with transaction() as store:
             subscription = store.get("push", alert["profile"])
             state = store.get("state", "market", {})
             clock = state.get("now", now) if MODE == "demo" and alert["kind"] != "TEST" else utc_now()
             signal = store.get("signal", alert["signal"])
-            eligible = True
+            eligible = not (signal and not publishable_grade(signal))
             if alert["kind"] == "ENTRY":
                 pause = restriction(state.get("calendar", {}), clock, MODE == "demo")
                 quote = state.get("quote") if utc_now() - state.get("heartbeat", 0) <= 30 else None
                 eligible = True if demo_account.enabled() else bool(not manual_pause(store, utc_now()) and signal and
-                                signal["status"] in ("PENDING", "FILLED") and not signal.get("hits") and
-                                gate(signal, quote, clock, pause)[0] == "CONFIRM")
+                                publishable_grade(signal) and signal["status"] in ("PENDING", "FILLED") and
+                                not signal.get("hits") and gate(signal, quote, clock, pause)[0] == "CONFIRM")
                 if demo_account.enabled():
                     owner = subscription.get("owner") if subscription else None
                     account_check = demo_account.check(store, signal, owner, clock) if owner else {"valid": False, "reason": "Demo device owner required"}
                     store.put("demo_check", alert["id"], {"alert": alert["id"], **account_check})
-                    eligible = account_check["valid"]
+                    eligible = bool(account_check["valid"] and signal and publishable_grade(signal))
                     alert["demo_account"] = account_check
                     if eligible:
                         alert["title"] = f"DEMO ENTRY READY · {signal['direction']} · 0.01 lot"
@@ -86,7 +116,11 @@ def send_pending(now):
                                          f"{account_check['costs']['slippage']:g} price slippage.")
                     else:
                         alert["title"] = "DEMO entry blocked"
-                        alert["body"] = f"First reason: {account_check['reason']}"
+                        first_reason = account_check.get("reason")
+                        if not signal or not publishable_grade(signal):
+                            first_reason = "Signal grade is not A/A+"
+                        alert["body"] = f"First reason: {first_reason or 'Demo entry blocked'}"
+
         if not subscription or clock >= alert["valid_until"] or not eligible:
             alert["delivery"] = "expired"
         elif clock >= alert.get("retry_at", 0):

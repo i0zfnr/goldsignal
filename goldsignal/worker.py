@@ -12,12 +12,13 @@ from filelock import FileLock
 
 from . import news
 from .access import MODEL, PRO_MODEL, encryption
-from .alerts import add_alert, send_pending
+from .alerts import add_alert, purge_admin_alerts, send_pending
 from .config import (AI_BEST_EFFORT, DAILY_SETUP, DB, ENTRY_TTL, MODE, REVIEW,
                      SESSION_CONFIDENCE_FILTER, SESSION_MIN_EXPECTANCY, SESSION_MIN_GRADE,
                      STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now)
-from .diagnostics import record
+from .diagnostics import record, record_in
 from .gemini_budget import GeminiPaused, pause_after_429, reserve
+from .grades import LOW_GRADES as LOW_SIGNAL_GRADES, is_low_grade, publishable_grade, signal_grade
 from .lifecycle import advance, day as day_key
 from .market import MT5, Replay
 from .pattern_research import conduct_research
@@ -28,7 +29,7 @@ from .session_intel import AGGRESSIVE_SESSIONS, analyze as session_intel
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import PATTERN_HISTORY, gate, levels, setup
-from .telegram import dispatch_telegram, format_entry, format_event, format_headsup, format_zone_touch, ryu_telemetry, send_telegram
+from .telegram import dispatch_telegram, format_entry, format_event, format_zone_touch, ryu_telemetry
 from .workers import blank as blank_workers, mark as mark_worker, mark_division, mark_lane as mark_lane_worker
 from . import demo_account
 
@@ -38,13 +39,9 @@ GEMINI_RETRY_DELAYS = (3, 8)
 GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "12"))
 ENTRY_LIMIT_PER_HOUR = 2
 ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
+USER_LIFECYCLE_EVENTS = ("ENTRY", "FILLED", "TP1", "TP2", "TP3", "TP1_SECURED", "TP2_SECURED", "STOPPED", "SL")
 GRADE_RANK = {"B": 0, "B+": 1, "A": 2, "A+": 3}
-LOW_SIGNAL_GRADES = ("B", "B+")
 AI_UNAVAILABLE_TEXT = ("unavailable", "paused", "cap reached", "cooling down", "waiting for gemini")
-
-
-def is_low_grade(item):
-    return str(item.get("grade") or "").upper() in LOW_SIGNAL_GRADES
 
 
 def ai_unavailable(model):
@@ -53,10 +50,12 @@ def ai_unavailable(model):
 
 def research_gate(item, research_res, session_res, bars, now):
     edge = float((research_res.get("shinra") or {}).get("edge_score") or 0)
-    grade = str(item.get("grade") or "").upper()
+    grade = signal_grade(item)
     if is_low_grade(item):
         return ("Research watch only — no entry. B/B+ grades are disabled; "
                 "only A and A+ signals publish.", edge, True, False)
+    if not publishable_grade(item):
+        return ("Research watch only — no entry. Only A and A+ signals publish.", edge, True, False)
     if not str(item.get("strategy") or "").startswith("B"):
         return None, edge, True, True
     grade_ok = GRADE_RANK.get(grade, -1) >= GRADE_RANK.get(SESSION_MIN_GRADE.upper(), 2)
@@ -110,14 +109,9 @@ def daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, no
         session=session_label(now), quality="labelled-watch",
     )
     store.put("signal", key, item)
-    store.put("alert", f"shared:{key}:DAILY", dict(
-        id=f"shared:{key}:DAILY", profile="shared", signal=key, kind="DAILY", time=now,
-        valid_until=item["expiry"], title=f"{SYMBOL} Daily {direction} setup (watch only)",
-        body=f"Entry {entry[0]:.2f}-{entry[1]:.2f} · SL {stop:.2f} · Research edge {edge}%",
-        url=f"/?signal={key}#signal", delivery="sent", attempts=1))
-    dispatch_telegram(f"DAILY SETUP · {SYMBOL} {direction}\n"
-                      f"Entry {entry[0]:.2f}-{entry[1]:.2f} · SL {stop:.2f}\n"
-                      f"Research edge {edge}%. Labelled watch only — no execution.")
+    record_in(store, "Admin · Daily watch",
+              f"{SYMBOL} Daily {direction} watch only · research edge {edge}%. Admin diagnostics only.",
+              level="info")
     return item
 hayate_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="hayate-compute")
 
@@ -286,12 +280,15 @@ def record_event(store, signal, name, ts):
     note = "Stop moved to reference" if name == "TP1" and signal["fill"] != signal["reference"] else None
     store.put("event", key, dict(id=key, signal=signal["id"], kind=name, time=ts,
                                  fill=signal["fill"], stop=signal["stop"], note=note))
+    if name not in USER_LIFECYCLE_EVENTS or not publishable_grade(signal):
+        record_in(store, "Admin · Lifecycle", f"{signal['id']} {name}. Admin diagnostics only.", level="info")
+        return
     add_alert(store, "shared", signal, name, ts)
     for recipient, subscription in store.items("push"):
         if subscription:
             add_alert(store, recipient, signal, name, ts)
     if name != "ENTRY":
-        dispatch_telegram(format_event(signal, name, ts))
+        dispatch_telegram(format_event(signal, name, ts), category="SIGNAL", store=store)
 
 
 def process(source, step, cursor, calendar, revision):
@@ -432,35 +429,41 @@ def process(source, step, cursor, calendar, revision):
             in_z = b_analysis["inside_zone"]
             touch_key = f"zone_in:{in_z['id']}:{int(now // 900)}"
             if not store.get("alert", touch_key):
+                zone_title = (f"PRICE IN ENTRY ZONE · XAUUSD {in_z['direction']} "
+                              f"({in_z['bottom']:.2f}–{in_z['top']:.2f})")
+                zone_body = (f"Live price {quote['bid']:.2f} is inside the M15 entry zone. "
+                             f"NOT a trade signal — no entry has been published.")
                 store.put("alert", touch_key, dict(
-                    id=touch_key, profile="shared", signal=None, kind="ZONE_TOUCH", time=now,
-                    valid_until=now + 600,
-                    title=f"Zone watch only · XAUUSD {in_z['direction']} ({in_z['bottom']:.2f}–{in_z['top']:.2f})",
-                    body=f"Price ({quote['bid']:.2f}) entered M15 {in_z['direction']} zone. Research watch only — DO NOT ENTER until an entry signal is published.",
+                    id=touch_key, profile="shared", signal=None, kind="ENTRY_ZONE", time=now,
+                    valid_until=now + 600, title=zone_title, body=zone_body,
                     url="/#signal", delivery="sent", attempts=1,
                 ))
-                dispatch_telegram(format_zone_touch(in_z["direction"], in_z, quote["bid"], now))
+                for recipient, subscription in store.items("push"):
+                    device_key = f"{touch_key}:{recipient}"
+                    if subscription and not store.get("alert", device_key):
+                        store.put("alert", device_key, dict(
+                            id=device_key, profile=recipient, signal=None, kind="ENTRY_ZONE", time=now,
+                            valid_until=now + 600, title=zone_title, body=zone_body,
+                            url="/#signal", delivery="queued", attempts=0,
+                        ))
+                dispatch_telegram(format_zone_touch(in_z["direction"], in_z, quote["bid"], now),
+                                  category="PRICE_ENTRY_ZONE", store=store)
 
         # Early Heads-up when M5 rejection occurs before M1 confirmation:
         if b_analysis and b_analysis.get("rejection") and b_analysis.get("next_step") == "WAITING FOR M1 CONFIRMATION":
             rej = b_analysis["rejection"]
             zone = b_analysis.get("zone", {})
-            headsup_key = f"headsup:{zone.get('id', 'z')}:{rej['time']}"
-            if not store.get("alert", headsup_key):
-                store.put("alert", headsup_key, dict(
-                    id=headsup_key, profile="shared", signal=None, kind="HEADS_UP", time=now,
-                    valid_until=now + 300,
-                    title=f"XAUUSD {zone.get('direction', '')} · Heads-up (M5 Rejection)",
-                    body=f"M5 closed outside zone {zone.get('bottom', 0):.2f}–{zone.get('top', 0):.2f}. Waiting for M1 confirmation break.",
-                    url="/#signal", delivery="sent", attempts=1,
-                ))
-                dispatch_telegram(format_headsup(zone.get("direction", "SELL"), zone, rej, now))
+            record_in(store, "Admin · Heads-up",
+                      f"M5 rejection at {zone.get('bottom', 0):.2f}–{zone.get('top', 0):.2f}; "
+                      f"waiting for M1 confirmation. Admin diagnostics only.",
+                      level="info")
 
         pending = [item for item in (candidate, scalp, range_cand) if item and not store.get("signal", item["id"])]
         for item in pending:
             item.setdefault("session", session_label(snapshot["now"]))
             lane = "C" if item.get("id", "").startswith("c_") else ("B" if item.get("strategy") else "A")
             item.setdefault("lane", lane)
+            item["grade"] = signal_grade(item)
         if SESSION_CONFIDENCE_FILTER and active_signal is None:
             for item in pending:
                 reason, edge, aligned, grade_ok = research_gate(
@@ -496,7 +499,7 @@ def process(source, step, cursor, calendar, revision):
         if (not stopped and len(recent_entries) < ENTRY_LIMIT_PER_HOUR
                 and (not model or (retry and now >= retry["after"])) and provider != "rules"
                 and not item.get("confidence_hold")
-                and not is_low_grade(item)
+                and publishable_grade(item)
                 and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
             try:
                 model = (gemini_review(gemini, item, snapshot, calendar,
@@ -550,20 +553,17 @@ def process(source, step, cursor, calendar, revision):
                                 evaluate(item, quote, now, calendar, review_gate))
             if item.get("confidence_hold"):
                 decision, reason = "WAIT", item["confidence_hold"]
-                if str(item.get("grade") or "").upper() in ("B", "B+"):
-                    hold_key = f"shared:{key}:HOLD"
-                    if not store.get("alert", hold_key):
-                        store.put("alert", hold_key, dict(
-                            id=hold_key, profile="shared", signal=key, kind="HOLD", time=now,
-                            valid_until=item["expiry"],
-                            title=f"RESEARCH WATCH ONLY · {SYMBOL} {item['direction']} {item.get('grade', '')}",
-                            body=f"{reason} DO NOT ENTER — no trade signal was published.",
-                            url=f"/?signal={key}#signal", delivery="sent", attempts=1))
-                        dispatch_telegram(
-                            f"RESEARCH WATCH ONLY · {SYMBOL} {item['direction']} {item.get('grade', '')}\n"
-                            f"{reason}\nDO NOT ENTER — no trade signal was published.")
-            if is_low_grade(item):
-                decision, reason = "WAIT", "B/B+ grades disabled — only A/A+ signals publish."
+            if not publishable_grade(item):
+                grade = item.get("grade") or "UNRATED"
+                decision, reason = "WAIT", f"Research watch only — no entry. {grade} grade is not A/A+."
+                record_in(store, "Admin · Research watch",
+                          f"{SYMBOL} {item['direction']} {grade} held. {reason} Admin diagnostics only.",
+                          level="info")
+                if item.get("strategy"):
+                    scalp = None
+                    if b_analysis:
+                        b_analysis["candidate"] = None
+                        b_analysis["next_step"] = "RESEARCH WATCH"
             baseline, baseline_reason = gate(item, quote, now)
             if demo_account.enabled() and baseline == "CONFIRM" and not store.get("demo_eligible", key):
                 store.put("demo_eligible", key, dict(observed_at=utc_now(), quote_time=quote["time"]))
@@ -591,7 +591,7 @@ def process(source, step, cursor, calendar, revision):
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
-                    dispatch_telegram(format_entry(item, publish_time))
+                    dispatch_telegram(format_entry(item, publish_time), category="SIGNAL", store=store)
                     mark_lane_worker(workers, item.get("lane", "A"), "hikari", "published",
                                      reason=f"{item['direction']} {key}", at=now)
                     if item.get("strategy"):
@@ -635,6 +635,7 @@ def run():
     if MODE not in ("demo", "mt5"):
         raise ValueError("MARKET_SOURCE must be demo or mt5")
     migrate()
+    purge_admin_alerts()
     source = Replay() if DEMO else MT5()
     with transaction() as store:
         state = store.get("state", "market", {})

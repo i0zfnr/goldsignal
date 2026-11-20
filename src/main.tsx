@@ -407,11 +407,11 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
           {candidate && (
             <div className="compact-candidate-card" style={{ marginTop: 6, padding: "6px 8px", background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.25)", borderRadius: 6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span className={`badge small grade-${(candidate.grade ?? "A").toLowerCase().replace("+", "-plus")}`}>
-                  GRADE {candidate.grade ?? "A"}
+                <span className={`badge small grade-${(candidate.grade ?? "UNRATED").toLowerCase().replace("+", "-plus")}`}>
+                  GRADE {candidate.grade ?? "UNRATED"}
                 </span>
                 <span className="small muted">
-                  {candidate.grade === "A+" ? "⭐️⭐️⭐️⭐️ Highest" : candidate.grade === "A" ? "⭐️⭐️⭐️ High" : candidate.grade === "B+" ? "⭐️⭐️ Good" : "⭐️ Standard"}
+                  {candidate.grade === "A+" ? "⭐️⭐️⭐️⭐️ Highest" : candidate.grade === "A" ? "⭐️⭐️⭐️ High" : "RESEARCH WATCH"}
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "0.8125rem" }}>
@@ -546,7 +546,7 @@ function Alerts({ data }: { data: Dashboard }) {
     </PanelHeading>
     <p className="muted small">{!data.push_key ? "Phone delivery requires HTTPS and Web Push keys." :
       !supported ? "On iPhone or iPad, open Goldsignal from your Home Screen to enable notifications." :
-        status?.enabled ? "This device is subscribed to entry and trade updates." : "Enable notifications on this device to receive entry and trade updates."}</p>
+        status?.enabled ? "Subscribed to A/A+ entry signals, trade updates, and price-in-entry-zone alerts." : "Enable notifications for A/A+ entry signals, trade updates, and price-in-entry-zone alerts."}</p>
     {status?.enabled && <div className="push-actions">
       <button disabled={busy} onClick={sendTest}>Send test notification</button>
       <button disabled={busy} onClick={() => void action(async () => {})}>Check delivery</button>
@@ -682,7 +682,9 @@ function App({ role, signOut, expired }: {
     window.scrollTo(0, 0);
   }
   const b_analysis = data?.b_analysis;
-  const candidateReady = b_analysis?.next_step === "ENTRY READY" && b_analysis.candidate ? b_analysis.candidate : null;
+  const candidateGrade = String(b_analysis?.candidate?.grade ?? "").toUpperCase();
+  const candidateReady = b_analysis?.next_step === "ENTRY READY" && b_analysis.candidate &&
+    (candidateGrade === "A" || candidateGrade === "A+") ? b_analysis.candidate : null;
   const signal: Signal | null = data?.active ?? (candidateReady ? { ...candidateReady, status: "ENTRY READY" } : null);
   const entry = data?.entry_check;
   const session = data?.session;

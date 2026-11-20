@@ -1,4 +1,4 @@
-"""Tests for Worker Upgrades: Telegram, Heads-up, Strategy C Range Fade, Kuro Latency."""
+"""Tests for Worker Upgrades: Telegram delivery policy, Strategy C Range Fade, Kuro Latency."""
 
 from goldsignal import telegram
 from goldsignal.range_fade import asian_range_candidate
@@ -32,25 +32,43 @@ def test_telegram_message_formatters():
     assert "3726.10" in text
     assert "TP1" in text
 
-    # Heads-up formatting
-    zone = {"bottom": 3718.28, "top": 3723.67, "direction": "SELL"}
-    rej = {"close": 3717.50}
-    headsup = telegram.format_headsup("SELL", zone, rej, 1795100000)
-    assert "HEADS-UP" in headsup
-    assert "M5 Rejection at M15 Zone" in headsup
-    assert "3718.28 – 3723.67" in headsup
+    legacy_scalp = telegram.format_entry({**signal, "evidence": {"grade": "M5/M1 scalp"}}, 1795100000)
+    assert "ENTRY SIGNAL [A]" in legacy_scalp
 
     # Zone touch formatting
+    zone = {"bottom": 3718.28, "top": 3723.67, "direction": "SELL"}
     ztouch = telegram.format_zone_touch("SELL", zone, 3720.0, 1795100000)
-    assert "ZONE WATCH ONLY" in ztouch
+    assert "PRICE IN ENTRY ZONE" in ztouch
+    assert "NOT A TRADE SIGNAL" in ztouch
     assert "DO NOT ENTER" in ztouch
-    assert "SUPPLY ZONE" in ztouch
+    assert "SUPPLY ENTRY ZONE" in ztouch
     assert "3718.28 – 3723.67" in ztouch
 
     # Lifecycle event formatting
     event_tp1 = telegram.format_event(dict(signal, fill=3720.00, stop=3720.00), "TP1", 1795100100)
     assert "TP1" in event_tp1
     assert "3720.00" in event_tp1
+
+
+def test_telegram_dispatch_policy_allows_only_signal_and_entry_zone(monkeypatch):
+    delivered = []
+    monkeypatch.setattr(telegram, "send_telegram",
+                        lambda text, *_args, **_kwargs: delivered.append(text) or True)
+
+    futures = [
+        telegram.dispatch_telegram("RESEARCH WATCH ONLY", category="ADMIN"),
+        telegram.dispatch_telegram("HEADS-UP", category="RESEARCH"),
+        telegram.dispatch_telegram("ENTRY SIGNAL [B+]", category="SIGNAL"),
+    ]
+    assert not delivered and not any(futures)
+
+    futures = [
+        telegram.dispatch_telegram("ENTRY SIGNAL [A+]", category="SIGNAL"),
+        telegram.dispatch_telegram("PRICE IN ENTRY ZONE", category="PRICE_ENTRY_ZONE"),
+    ]
+    for future in futures:
+        assert future is not None and future.result() is True
+    assert len(delivered) == 2
 
 
 def test_strategy_c_asian_range_fade():
