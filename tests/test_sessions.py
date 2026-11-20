@@ -43,6 +43,17 @@ def test_summary_attributes_detection_and_closed_outcome():
     assert all(item["status"] == "No closed trades" for item in rows if item["session"] != "New York")
 
 
+def test_summary_counts_partial_tp_as_win_while_trade_is_active():
+    stamp = ts(2026, 11, 19, 14)
+    signals = [dict(created=stamp, status="FILLED", hits=1, direction="BUY", fill=100,
+                    exits=[dict(time=stamp + 60, price=101, fraction=1 / 3)], session=None)]
+    rows = sessions.summary(signals, [], lambda value: True,
+                            ["Sydney", "Tokyo", "London", "New York"])
+    row = next(item for item in rows if item["session"] == "New York")
+    assert row["closed"] == 1 and row["wins"] == 1 and row["pips"] > 0
+    assert row["win_rate"] == 100.0
+
+
 def test_sessions_endpoint_reports_each_session(db):
     stamp = ts(2026, 11, 19, 14)
     with store.transaction() as data:

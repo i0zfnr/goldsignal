@@ -570,6 +570,24 @@ def test_performance_uses_closed_fills_and_myt_periods(db):
         assert (week["signals"], week["wins"], week["losses"], week["pips"]) == (3, 1, 1, -10)
 
 
+def test_performance_counts_partial_tp_immediately(db):
+    today = datetime(2026, 11, 19, 1, tzinfo=config.MY).timestamp()
+    with store.transaction() as data:
+        data.put("state", "market", {"now": today})
+        data.put("signal", "tp1", {
+            "created": today - 1800, "status": "FILLED", "hits": 1,
+            "direction": "BUY", "fill": 100, "session": "New York",
+            "exits": [{"time": today - 60, "price": 103, "fraction": 1 / 3}],
+        })
+    with TestClient(app) as client:
+        day = client.get("/api/performance?period=day").json()
+        sessions = client.get("/api/sessions?period=day").json()["sessions"]
+    assert (day["signals"], day["wins"], day["losses"], day["flat"]) == (1, 1, 0, 0)
+    assert day["pips"] > 0
+    row = next(item for item in sessions if item["session"] == "New York")
+    assert row["closed"] == 1 and row["wins"] == 1 and row["win_rate"] == 100.0
+
+
 def test_news_counterfactual(db):
     for step in range(24, 33):
         tick(step)

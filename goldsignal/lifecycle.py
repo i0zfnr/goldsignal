@@ -49,6 +49,14 @@ def advance(signal, quote, now, can_fill, costs):
     return events
 
 
+def is_realized(signal):
+    if signal.get("fill") is None or not signal.get("exits"):
+        return False
+    if signal.get("status") in ("COMPLETED", "STOPPED", "TIMED_OUT", "TP1_SECURED", "TP2_SECURED"):
+        return True
+    return signal.get("status") == "FILLED" and signal.get("hits", 0) > 0
+
+
 def day(ts):
     return datetime.fromtimestamp(ts, MY).date()
 

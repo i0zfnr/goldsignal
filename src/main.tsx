@@ -839,7 +839,7 @@ function App({ role, signOut, expired }: {
       </div>
       </div>
       <div className="dashboard-view" hidden={view !== "performance"}>
-        {data ? <Performance revision={data.history.map(item => `${item.id}:${item.status}`).join(",")} /> : <p role="status">Loading performance…</p>}
+        {data ? <Performance revision={data.history.map(item => `${item.id}:${item.status}:${item.hits}`).join(",")} /> : <p role="status">Loading performance…</p>}
       </div>
       <div className="dashboard-view" hidden={view !== "lot"}>
         <LotSize />

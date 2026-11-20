@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from .config import MARKET_SESSIONS
+from .lifecycle import is_realized
 
 MIN_SAMPLE = 30
 EVIDENCE_SAMPLE = 150
@@ -61,7 +62,7 @@ def summary(signals, candidates, in_period, names):
         rows[key]["published"] += 1
         rows[key]["last"] = max(rows[key]["last"] or 0, signal["created"])
         exits = signal.get("exits", [])
-        if signal.get("fill") is None or not exits or signal["status"] not in ("COMPLETED", "STOPPED", "TIMED_OUT", "TP1_SECURED", "TP2_SECURED"):
+        if not is_realized(signal):
             continue
         closed = exits[-1]["time"]
         if not in_period(closed):

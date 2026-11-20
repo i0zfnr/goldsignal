@@ -21,6 +21,7 @@ from .access import admin, identity, router
 from .alerts import device_key, queue_test
 from .chat import router as chat_router
 from .diagnostics import record
+from .lifecycle import is_realized
 from .strategy import executable, gate
 from .sessions import summary as session_summary
 from .workers import snapshot as worker_snapshot
@@ -186,7 +187,7 @@ def performance(request: Request, response: Response, period: Literal["day", "we
     for signal in signals:
         exits = signal.get("exits", [])
         fill = signal.get("fill")
-        if fill is None or not exits or signal["status"] not in ("COMPLETED", "STOPPED", "TIMED_OUT", "TP1_SECURED", "TP2_SECURED"):
+        if not is_realized(signal):
             continue
         closed = exits[-1]["time"]
         if not in_period(closed):
