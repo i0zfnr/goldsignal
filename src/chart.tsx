@@ -35,8 +35,8 @@ export function Chart({
   const liveLines = useRef<IPriceLine[]>([]);
   const [palette, setPalette] = useState(0);
 
-  // Render ONLY 2 or 3 high-confidence zones (max 3 total on chart)
-  const zonesToRender = (b_analysis?.zones ?? []).slice(0, 3);
+  // Render the high-confidence zones from the analysis (up to 3 SELL + 3 BUY).
+  const zonesToRender = b_analysis?.zones ?? [];
   const candidate = b_analysis?.candidate;
 
   useEffect(() => {

@@ -273,3 +273,21 @@ def test_entry_grade_levels():
     grade_b = b2.calculate_grade(zone_tested, {"high": 3720, "low": 3719, "close": 3719.9}, trig, snap, risk=3.5, mtf_aligned=False)
     assert grade_b == "B"
 
+
+def test_active_zones_returns_up_to_three_per_side():
+    def zone(idx, direction, bottom, top):
+        return dict(id=str(idx), direction=direction, bottom=bottom, top=top,
+                    power=7, mitigated=None, expired=10**12, invalidated=None)
+
+    rows = [
+        zone(1, "SELL", 110, 112), zone(2, "SELL", 114, 116),
+        zone(3, "SELL", 118, 120), zone(4, "SELL", 122, 124),
+        zone(5, "BUY", 80, 82), zone(6, "BUY", 84, 86),
+        zone(7, "BUY", 88, 90), zone(8, "BUY", 92, 94),
+    ]
+    selected = b2.active(rows, now=0, price=100)
+    assert len([z for z in selected if z["direction"] == "SELL"]) == 3
+    assert len([z for z in selected if z["direction"] == "BUY"]) == 3
+    assert len(selected) == 6
+
+

@@ -21,6 +21,7 @@ PARAMS = dict(
     entry_window=1800,
     zone_ttl=48 * 900,
     max_spread=0.5,
+    max_zones_per_side=3,
 )
 
 
@@ -251,19 +252,9 @@ def active(zones_, now, price):
     sells.sort(key=rank_key)
     buys.sort(key=rank_key)
 
-    # Return at most 2 or 3 high confidence zones (e.g. 1 Sell + 1 Buy + 1 best alternate)
-    selected = []
-    if sells and buys:
-        selected.append(sells[0])
-        selected.append(buys[0])
-        rem = sells[1:] + buys[1:]
-        if rem:
-            rem.sort(key=rank_key)
-            selected.append(rem[0])
-    elif sells:
-        selected = sells[:3]
-    elif buys:
-        selected = buys[:3]
+    # Return up to N best zones per side (default 3 SELL + 3 BUY).
+    per_side = PARAMS["max_zones_per_side"]
+    selected = sells[:per_side] + buys[:per_side]
 
     selected.sort(key=lambda r: abs(price - (r["top"] + r["bottom"]) / 2))
     return selected
@@ -430,7 +421,7 @@ def analyze(snapshot, mtf="M15"):
                      M15=m15_bias.get("direction", "neutral"),
                      M30=m30_bias.get("direction", "neutral"),
                      H1=h1_bias.get("direction", "neutral")),
-        zones=live_zones[:3], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
+        zones=live_zones, nearest_sell=nearest_sell, nearest_buy=nearest_buy,
         inside_zone=inside_zone,
         next_step=f"WAITING FOR {mtf} DIRECTION", reason=None,
         candidate=None, rejection=None, trigger=None, zone=None,

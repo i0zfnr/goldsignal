@@ -364,9 +364,9 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
         </p>
       </details>
 
-      {/* 2. Zone Rationale - 2 or 3 High-Confidence Zones Only */}
+      {/* 2. Zone Rationale - up to 3 SELL + 3 BUY high-confidence zones */}
       <details className="insight-details" open>
-        <summary>Zone Rationale ({analysis.zones.length} High Confidence)</summary>
+        <summary>Zone Rationale ({analysis.zones.filter(z => z.direction === "SELL").length} SELL · {analysis.zones.filter(z => z.direction === "BUY").length} BUY)</summary>
         <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
           {analysis.zones.length > 0 ? (
             analysis.zones.map(z => {
