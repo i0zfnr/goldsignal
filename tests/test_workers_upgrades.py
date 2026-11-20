@@ -40,6 +40,12 @@ def test_telegram_message_formatters():
     assert "M5 Rejection at M15 Zone" in headsup
     assert "3718.28 – 3723.67" in headsup
 
+    # Zone touch formatting
+    ztouch = telegram.format_zone_touch("SELL", zone, 3720.0, 1795100000)
+    assert "PRICE ENTERED ZONE" in ztouch
+    assert "SUPPLY ZONE" in ztouch
+    assert "3718.28 – 3723.67" in ztouch
+
     # Lifecycle event formatting
     event_tp1 = telegram.format_event(dict(signal, fill=3720.00, stop=3720.00), "TP1", 1795100100)
     assert "TP1" in event_tp1

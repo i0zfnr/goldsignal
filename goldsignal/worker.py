@@ -24,7 +24,7 @@ from .scalp_v2 import analyze as analyze_v2
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
-from .telegram import format_entry, format_event, format_headsup, send_telegram
+from .telegram import format_entry, format_event, format_headsup, format_zone_touch, send_telegram
 from .workers import blank as blank_workers, mark as mark_worker, mark_lane as mark_lane_worker
 from . import demo_account
 
@@ -266,6 +266,20 @@ def process(source, step, cursor, calendar, revision):
             range_cand, range_scan = asian_range_candidate(snapshot, m5_recent, snapshot.get("bars", []))
         mark_lane_worker(workers, "C", "kaze", "setup" if range_cand else "waiting",
                          reason=range_scan, at=now)
+
+        # Real-time Price in Zone Notification (When price enters any active zone)
+        if b_analysis and b_analysis.get("inside_zone") and quote:
+            in_z = b_analysis["inside_zone"]
+            touch_key = f"zone_in:{in_z['id']}:{int(now // 900)}"
+            if not store.get("alert", touch_key):
+                store.put("alert", touch_key, dict(
+                    id=touch_key, profile="shared", signal=None, kind="ZONE_TOUCH", time=now,
+                    valid_until=now + 600,
+                    title=f"XAUUSD in {in_z['direction']} Zone ({in_z['bottom']:.2f}–{in_z['top']:.2f})",
+                    body=f"Price ({quote['bid']:.2f}) entered M15 {in_z['direction']} zone. Watching for reversal scalp entry!",
+                    url="/#signal", delivery="sent", attempts=1,
+                ))
+                send_telegram(format_zone_touch(in_z["direction"], in_z, quote["bid"], now))
 
         # Early Heads-up when M5 rejection occurs before M1 confirmation:
         if b_analysis and b_analysis.get("rejection") and b_analysis.get("next_step") == "WAITING FOR M1 CONFIRMATION":

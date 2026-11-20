@@ -277,15 +277,20 @@ def _find_rejections(m5, zone, now):
             continue
         if close_time > now:
             break
-        overlap = bar["high"] >= zone["bottom"] and bar["low"] <= zone["top"]
+        overlap = bar["high"] >= zone["bottom"] - 1.0 and bar["low"] <= zone["top"] + 1.0
         if not overlap:
             continue
-        if zone["direction"] == "SELL" and bar["close"] < zone["bottom"]:
-            rejections.append(dict(time=close_time, bar_time=bar["time"], high=bar["high"],
-                                   low=bar["low"], close=bar["close"]))
-        elif zone["direction"] == "BUY" and bar["close"] > zone["top"]:
-            rejections.append(dict(time=close_time, bar_time=bar["time"], high=bar["high"],
-                                   low=bar["low"], close=bar["close"]))
+        rng = bar["high"] - bar["low"]
+        if zone["direction"] == "SELL":
+            wick = bar["high"] - max(bar["open"], bar["close"])
+            if bar["close"] < zone["bottom"] or (rng > 0 and wick / rng >= 0.20 and bar["close"] <= bar["open"] + 0.5):
+                rejections.append(dict(time=close_time, bar_time=bar["time"], high=bar["high"],
+                                       low=bar["low"], close=bar["close"]))
+        elif zone["direction"] == "BUY":
+            wick = min(bar["open"], bar["close"]) - bar["low"]
+            if bar["close"] > zone["top"] or (rng > 0 and wick / rng >= 0.20 and bar["close"] >= bar["open"] - 0.5):
+                rejections.append(dict(time=close_time, bar_time=bar["time"], high=bar["high"],
+                                       low=bar["low"], close=bar["close"]))
     return rejections
 
 
@@ -293,15 +298,17 @@ def _confirmation(m1, rejection, now, direction):
     limit = rejection["time"] + PARAMS["entry_window"]
     for index, bar in enumerate(m1):
         close_time = bar["time"] + 60
-        if close_time <= rejection["time"] or index < 3:
+        if close_time <= rejection["time"] or index < 1:
             continue
         if close_time > min(limit, now):
             break
-        prior = m1[index - 3:index]
-        if direction == "SELL" and bar["close"] < min(row["low"] for row in prior):
-            return dict(time=close_time, close=bar["close"], bar=bar)
-        if direction == "BUY" and bar["close"] > max(row["high"] for row in prior):
-            return dict(time=close_time, close=bar["close"], bar=bar)
+        prior = m1[max(0, index - 3):index]
+        if direction == "SELL":
+            if prior and (bar["close"] < min(row["low"] for row in prior) or (bar["close"] < prior[-1]["low"] and bar["close"] < bar["open"])):
+                return dict(time=close_time, close=bar["close"], bar=bar)
+        elif direction == "BUY":
+            if prior and (bar["close"] > max(row["high"] for row in prior) or (bar["close"] > prior[-1]["high"] and bar["close"] > bar["open"])):
+                return dict(time=close_time, close=bar["close"], bar=bar)
     return None
 
 
@@ -319,7 +326,7 @@ def calculate_grade(zone, rejection, trigger, snapshot, risk, mtf_aligned=True):
                 score += 1
     quote = snapshot.get("quote") or {}
     spread = round(quote.get("ask", 0) - quote.get("bid", 0), 2) if quote.get("ask") else 0.30
-    if risk <= 2.00 and spread <= 0.40:
+    if risk <= 2.50 and spread <= 0.40:
         score += 1
     return {4: "A+", 3: "A", 2: "B+", 1: "B", 0: "B"}.get(score, "B")
 
@@ -329,17 +336,21 @@ def _candidate(zone, rejection, trigger, snapshot, m15_closed, mtf_aligned=True)
     if zone["direction"] == "SELL":
         stop = round(rejection["high"] + PARAMS["stop_buffer"], 2)
         risk = round(stop - ref, 2)
-        better_price = round(ref + risk * PARAMS["band"], 2)
-        band = sorted([ref, better_price])
+        if risk <= 0:
+            risk = 2.0
+            stop = round(ref + risk, 2)
+        # Actionable scalp entry band: covers from zone top down to ref - 1.20
+        band = sorted([round(ref - max(1.20, risk * 0.25), 2), round(max(zone["top"], ref + 0.80), 2)])
         sign = -1
     else:
         stop = round(rejection["low"] - PARAMS["stop_buffer"], 2)
         risk = round(ref - stop, 2)
-        better_price = round(ref - risk * PARAMS["band"], 2)
-        band = sorted([better_price, ref])
+        if risk <= 0:
+            risk = 2.0
+            stop = round(ref - risk, 2)
+        # Actionable scalp entry band: covers from zone bottom up to ref + 1.20
+        band = sorted([round(min(zone["bottom"], ref - 0.80), 2), round(ref + max(1.20, risk * 0.25), 2)])
         sign = 1
-    if risk <= 0:
-        return None
     target = [round(ref + sign * risk * multiple, 2) for multiple in PARAMS["targets"]]
     symbol = snapshot.get("symbol", SYMBOL)
     trend_closes = {"15": [row["close"] for row in m15_closed[-4:]]}
@@ -351,7 +362,7 @@ def _candidate(zone, rejection, trigger, snapshot, m15_closed, mtf_aligned=True)
         strategy="B · liquidity scalp", strategy_version=PARAMS["version"], direction=zone["direction"],
         grade=grade,
         reference=ref, entry=band, initial_stop=stop, stop=stop, targets=target,
-        max_spread=min(PARAMS["max_spread"], risk * 0.2), hold_seconds=PARAMS["hold_seconds"],
+        max_spread=min(PARAMS["max_spread"], max(0.40, risk * 0.2)), hold_seconds=PARAMS["hold_seconds"],
         created=trigger["time"], expiry=min(trigger["time"] + PARAMS["entry_window"], zone["expired"]),
         hits=0, exits=[], status="PENDING", fill=None,
         result_per_lot=0 if snapshot.get("spec") else None, costs=snapshot.get("spec"),
@@ -395,6 +406,7 @@ def analyze(snapshot, mtf="M15"):
 
     primary_bias = m15_bias if mtf == "M15" else h1_bias
     context_bias = m5_bias if mtf == "M15" else m15_bias
+    wanted = {"bearish": "SELL", "bullish": "BUY"}.get(primary_bias.get("direction"))
 
     all_zones = zones(m15, now)
     live_zones = active(all_zones, now, price)
@@ -402,6 +414,9 @@ def analyze(snapshot, mtf="M15"):
     fresh_buys = [row for row in live_zones if row["direction"] == "BUY" and not row.get("mitigated")]
     nearest_sell = fresh_sells[0] if fresh_sells else next((row for row in live_zones if row["direction"] == "SELL"), None)
     nearest_buy = fresh_buys[0] if fresh_buys else next((row for row in live_zones if row["direction"] == "BUY"), None)
+
+    # Detect if live price is inside any active zone
+    inside_zone = next((z for z in live_zones if z["bottom"] <= price <= z["top"]), None)
 
     report = dict(
         version=PARAMS["version"], mtf=mtf, now=now, price=price,
@@ -412,6 +427,7 @@ def analyze(snapshot, mtf="M15"):
                      M30=m30_bias.get("direction", "neutral"),
                      H1=h1_bias.get("direction", "neutral")),
         zones=live_zones[:3], nearest_sell=nearest_sell, nearest_buy=nearest_buy,
+        inside_zone=inside_zone,
         next_step=f"WAITING FOR {mtf} DIRECTION", reason=None,
         candidate=None, rejection=None, trigger=None, zone=None,
     )
@@ -422,52 +438,54 @@ def analyze(snapshot, mtf="M15"):
         report["reason"] = "No active M15 liquidity zone."
         return report
 
-    wanted = {"bearish": "SELL", "bullish": "BUY"}.get(primary_bias.get("direction"))
-    chosen_zone = next((row for row in live_zones if row["direction"] == wanted), live_zones[0])
-    report["zone"] = chosen_zone
-
     candidate_found = None
     latest_rejection = None
-    for zone in ([chosen_zone] if wanted else live_zones[:2]):
+    target_zone = None
+
+    # Check ALL active live_zones (both BUY demand and SELL supply)
+    for zone in live_zones:
         rejections = _find_rejections(m5, zone, now)
         if rejections:
             latest_rejection = rejections[-1]
-            report["rejection"] = latest_rejection
             for rej in reversed(rejections):
                 trig = _confirmation(m1, rej, now, zone["direction"])
                 if trig:
                     cand = _candidate(zone, rej, trig, snapshot, m15, mtf_aligned=(wanted == zone["direction"]))
                     if cand:
                         candidate_found = cand
+                        target_zone = zone
                         report["rejection"] = rej
                         report["trigger"] = trig
                         break
         if candidate_found:
             break
 
-    if candidate_found and wanted == candidate_found["direction"]:
+    if candidate_found:
+        report["zone"] = target_zone
         if now > candidate_found["expiry"]:
             report["candidate"] = None
             report["next_step"] = "EXPIRED"
-            report["reason"] = f"M1 confirmation window expired. Waiting for fresh M5 rejection."
+            report["reason"] = "M1 confirmation window expired. Waiting for fresh rejection."
             return report
         report["candidate"] = candidate_found
         report["next_step"] = "ENTRY READY"
         report["reason"] = candidate_found["evidence"]["reason"]
         return report
 
-    if candidate_found and wanted != candidate_found["direction"]:
-        report["reason"] = f"M1 confirmation exists but {mtf} direction disagrees."
-        report["next_step"] = "WATCH BUY" if wanted == "BUY" else "WATCH SELL" if wanted == "SELL" else f"WAITING FOR {mtf} DIRECTION"
+    if inside_zone:
+        report["zone"] = inside_zone
+        report["next_step"] = f"PRICE IN {inside_zone['direction']} ZONE"
+        report["reason"] = f"Price is testing M15 {inside_zone['direction']} zone ({inside_zone['bottom']:.2f}–{inside_zone['top']:.2f}). Watching for reversal scalp!"
         return report
 
-    if primary_bias.get("direction") == "neutral":
-        report["next_step"] = "WATCH BUY" if chosen_zone["direction"] == "BUY" else "WATCH SELL"
-        report["reason"] = f"{mtf} structure is neutral; watch zone only, no entry."
-    elif latest_rejection and now <= latest_rejection["time"] + PARAMS["entry_window"]:
+    if latest_rejection and now <= latest_rejection["time"] + PARAMS["entry_window"]:
+        report["zone"] = target_zone or live_zones[0]
         report["next_step"] = "WAITING FOR M1 CONFIRMATION"
-        report["reason"] = "M5 rejection found; waiting for a closed M1 break."
-    else:
-        report["next_step"] = "WAITING FOR M5 REJECTION"
-        report["reason"] = "Zone active; waiting for a completed M5 rejection."
+        report["reason"] = "M5 rejection confirmed. Waiting for M1 confirmation candle."
+        return report
+
+    nearest = live_zones[0]
+    report["zone"] = nearest
+    report["next_step"] = f"WATCHING {nearest['direction']} ZONE"
+    report["reason"] = f"Nearest {nearest['direction']} zone at {nearest['bottom']:.2f}–{nearest['top']:.2f}. Waiting for touch."
     return report

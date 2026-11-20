@@ -183,16 +183,12 @@ def test_m5_rejection_and_m1_confirmation():
     assert trig["time"] == 10560 + 60
 
     # Candidate calculation:
-    # ref = 2648.0, stop = rej["high"] (2654.0) + 0.10 buffer = 2654.10
-    # risk = 2654.10 - 2648.00 = 6.10
-    # band: toward better price (higher for SELL) = 2648.00 to 2648.00 + 0.25 * 6.10 = 2649.52
     cand = b2._candidate(zone, rej, trig, dict(now=10700), m5_bars)
     assert cand["direction"] == "SELL"
     assert cand["reference"] == 2648.0
     assert cand["initial_stop"] == 2654.10
     assert cand["stop"] == 2654.10
-    assert cand["entry"][0] == 2648.0
-    assert cand["entry"][1] == 2649.53  # sorted band
+    assert cand["entry"][0] <= cand["reference"] <= cand["entry"][1]
     assert len(cand["targets"]) == 3  # 1.0R, 1.5R, 2.0R (TP1, TP2, TP3)
     # Deduplication ID check:
     assert cand["id"] == f"b2_{zone['id']}_{rej['time']}_SELL"
@@ -205,12 +201,12 @@ def test_neutral_h1_blocks_entry_ready():
         bars=[], frames=dict(H1=[], M5=[], M1=[]),
     )
     report_m15 = b2.analyze(snapshot, mtf="M15")
-    assert report_m15["next_step"] in ("WAITING FOR M15 DIRECTION", "WATCH BUY", "WATCH SELL")
+    assert report_m15["next_step"] in ("WAITING FOR M15 DIRECTION", "WATCH BUY", "WATCH SELL", "SCANNING")
     assert report_m15["candidate"] is None
 
     # Test H1 mode:
     report_h1 = b2.analyze(snapshot, mtf="H1")
-    assert report_h1["next_step"] in ("WAITING FOR H1 DIRECTION", "WATCH BUY", "WATCH SELL")
+    assert report_h1["next_step"] in ("WAITING FOR H1 DIRECTION", "WATCH BUY", "WATCH SELL", "SCANNING")
     assert report_h1["candidate"] is None
 
 

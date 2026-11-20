@@ -166,22 +166,20 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
   };
 
   const stepBadge = (step: string) => {
-    const tones: Record<string, "positive" | "negative" | "neutral" | "accent"> = {
-      "ENTRY READY": "positive",
-      "WAITING FOR M5 REJECTION": "accent",
-      "WAITING FOR M1 CONFIRMATION": "accent",
-      "WATCH BUY": "positive",
-      "WATCH SELL": "negative",
-      "EXPIRED": "neutral",
-      "SKIP": "neutral",
-    };
-    const tone = tones[step] ?? "neutral";
+    let tone: "positive" | "negative" | "neutral" | "accent" = "neutral";
+    if (step === "ENTRY READY" || step.includes("BUY")) {
+      tone = "positive";
+    } else if (step.includes("SELL")) {
+      tone = "negative";
+    } else if (step.includes("WAITING") || step.includes("REJECTION") || step.includes("CONFIRMATION")) {
+      tone = "accent";
+    }
     return <span className={`badge badge-${tone} small`}>{step}</span>;
   };
 
   const isInside = (z: BZone) => currentPrice >= z.bottom && currentPrice <= z.top;
   const distanceToEdge = (z: BZone) => {
-    if (isInside(z)) return "inside";
+    if (isInside(z)) return "🎯 INSIDE";
     const dist = Math.min(Math.abs(currentPrice - z.top), Math.abs(currentPrice - z.bottom));
     return `${dist.toFixed(2)} away`;
   };

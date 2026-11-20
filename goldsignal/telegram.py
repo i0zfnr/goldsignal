@@ -75,6 +75,26 @@ def format_entry(signal: dict, now: float) -> str:
     )
 
 
+def format_zone_touch(direction: str, zone: dict, price: float, now: float) -> str:
+    time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
+    is_sell = direction == "SELL"
+    icon = "🔴" if is_sell else "🟢"
+    zone_type = "SUPPLY ZONE (Resistance)" if is_sell else "DEMAND ZONE (Support)"
+    action = "SELL Scalp (Rejection bounce down)" if is_sell else "BUY Scalp (Rejection bounce up)"
+    return (
+        f"🔔 <b>GOLDSIGNAL · PRICE ENTERED ZONE</b>\n"
+        f"{icon} <b>XAUUSD · In M15 {zone_type}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📍 <b>Zone Bounds:</b> <code>{zone.get('bottom', 0):.2f} – {zone.get('top', 0):.2f}</code>\n"
+        f"💲 <b>Live Price:</b> <code>{price:.2f}</code>\n"
+        f"⭐ <b>Zone Power:</b> <code>{zone.get('power', 8)}/10</code> ({zone.get('confidence', 'HIGH')})\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 <b>Watching For:</b> {action}\n"
+        f"🕒 <b>Time:</b> {time_str} MYT\n"
+        f"👉 <i>Open your terminal. Signal will fire as soon as reversal candle confirms!</i>"
+    )
+
+
 def format_headsup(direction: str, zone: dict, rejection: dict, now: float) -> str:
     time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
     icon = "🔻" if direction == "SELL" else "🔺"
