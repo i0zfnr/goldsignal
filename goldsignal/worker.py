@@ -454,10 +454,11 @@ def process(source, step, cursor, calendar, revision):
                 reason = (f"Held back in {item.get('session') or session_res['regime']}: "
                           f"grade {item.get('grade') or 'n/a'}, research edge {edge}%, "
                           f"flow {'aligned' if aligned else 'against'} {item['direction']}.")
+                item["confidence_hold"] = reason
                 if item.get("strategy"):
                     scalp_scan = reason
                 scan["reason"] = reason
-                mark_lane_worker(workers, item.get("lane", "A"), "kaze", "waiting", reason=reason, at=now)
+                filtered.append(item)
             pending = filtered
         if demo_account.enabled():
             for item in pending:
@@ -481,6 +482,7 @@ def process(source, step, cursor, calendar, revision):
         pause = news.restriction(calendar, now, DEMO) if configured else None
         if (not stopped and len(recent_entries) < ENTRY_LIMIT_PER_HOUR
                 and (not model or (retry and now >= retry["after"])) and provider != "rules"
+                and not item.get("confidence_hold")
                 and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
             try:
                 model = (gemini_review(gemini, item, snapshot, calendar,
@@ -532,6 +534,17 @@ def process(source, step, cursor, calendar, revision):
                 log.info("Gemini unavailable. Publishing from rules only.")
             decision, reason = (("WAIT", scan["reason"]) if stopped else
                                 evaluate(item, quote, now, calendar, review_gate))
+            if item.get("confidence_hold"):
+                decision, reason = "WAIT", item["confidence_hold"]
+                if str(item.get("grade") or "").upper() in ("B", "B+"):
+                    hold_key = f"shared:{key}:HOLD"
+                    if not store.get("alert", hold_key):
+                        store.put("alert", hold_key, dict(
+                            id=hold_key, profile="shared", signal=key, kind="HOLD", time=now,
+                            valid_until=item["expiry"],
+                            title=f"{SYMBOL} {item['direction']} {item.get('grade', '')} setup held",
+                            body=reason, url=f"/?signal={key}#signal", delivery="sent", attempts=1))
+                        dispatch_telegram(f"SETUP HOLD · {SYMBOL} {item['direction']} {item.get('grade', '')}\n{reason}")
             baseline, baseline_reason = gate(item, quote, now)
             if demo_account.enabled() and baseline == "CONFIRM" and not store.get("demo_eligible", key):
                 store.put("demo_eligible", key, dict(observed_at=utc_now(), quote_time=quote["time"]))
