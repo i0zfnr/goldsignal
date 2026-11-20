@@ -31,25 +31,25 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0b0c0f;
-  --panel: #14161a;
-  --raised: #1c1e24;
-  --field: #111215;
-  --line: #2a2d36;
-  --control-border: #474d5c;
-  --text: #ffffff;
-  --muted: #94a3b8;
-  --stat-dt: #cbd5e1;
+  --page: #08090c;
+  --panel: #101216;
+  --raised: #171a20;
+  --field: #0c0d11;
+  --line: #22252d;
+  --control-border: #343843;
+  --text: #eef1f6;
+  --muted: #98a1b2;
+  --stat-dt: #b6becd;
   --stat-dd: #ffffff;
-  --gold: #f59e0b;
-  --gold-hover: #fbbf24;
-  --gold-active: #d97706;
-  --gold-ink: #000000;
-  --selected: rgba(245, 158, 11, 0.18);
-  --buy: #10b981;
-  --sell: #ef4444;
-  --ask: #fbbf24;
-  --grid: rgba(255, 255, 255, 0.04);
+  --gold: #f5a524;
+  --gold-hover: #f7b743;
+  --gold-active: #e09410;
+  --gold-ink: #0b0c0f;
+  --selected: rgba(245, 165, 36, 0.16);
+  --buy: #16c784;
+  --sell: #ea3943;
+  --ask: #f7b743;
+  --grid: rgba(255, 255, 255, 0.05);
   --chart-label: #ffffff;
 }
 * { box-sizing: border-box; }
@@ -616,40 +616,42 @@ footer a { color: inherit; }
   background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.5); color: #f87171;
 }
 
-/* 5. Cyber Avatars SVGs & Animations */
-.crew-avatar-frame { position: relative; width: 62px; height: 62px; margin: 4px 0 6px; }
-.cyber-avatar { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
-.cyber-svg { width: 100%; height: 100%; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
+/* 5. Operator Desk Badges — clean desk identity, no robot faces */
+.crew-avatar-frame { position: relative; width: 54px; height: 54px; margin: 4px 0 6px; }
+.operator-avatar {
+  position: relative; width: 100%; height: 100%; display: grid; place-items: center;
+  border-radius: 13px; background: linear-gradient(145deg, var(--raised), var(--panel));
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 4px 12px rgba(0, 0, 0, .22);
+}
+.operator-initials { font-size: 1.05rem; font-weight: 750; letter-spacing: -.02em; color: var(--text); }
+.operator-icon {
+  position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+}
+.operator-status-dot {
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--muted); border: 2px solid var(--panel);
+}
+.tone-live .operator-avatar { border-color: rgba(16, 185, 129, .55); background: linear-gradient(145deg, rgba(16, 185, 129, .18), var(--panel)); }
+.tone-live .operator-initials, .tone-live .operator-icon { color: #34d399; }
+.tone-live .operator-icon { border-color: rgba(16, 185, 129, .4); }
+.tone-live .operator-status-dot { background: #10b981; box-shadow: 0 0 6px #10b981; }
+.tone-warn .operator-avatar { border-color: rgba(245, 158, 11, .5); }
+.tone-warn .operator-initials, .tone-warn .operator-icon { color: #fbbf24; }
+.tone-warn .operator-status-dot { background: #f59e0b; }
+.tone-error .operator-avatar { border-color: rgba(239, 68, 68, .55); }
+.tone-error .operator-initials, .tone-error .operator-icon { color: #f87171; }
+.tone-error .operator-status-dot { background: #ef4444; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .crew-live .cyber-svg { animation: avatar-live-bob 2.8s ease-in-out infinite; }
-  .crew-live.crew-card { animation: card-live-breathe 3.6s ease-in-out infinite; }
-  .avatar-radar { animation: radar-spin 8s linear infinite; transform-origin: 32px 32px; }
-  .crew-live .avatar-eye-pulse { animation: eye-flare 1.8s ease-in-out infinite alternate; }
-  .crew-live .pulse-dot { animation: dot-blip 1.2s ease-in-out infinite; }
-  .crew-live .avatar-scan-bar { animation: scan-oscillate 2.4s ease-in-out infinite alternate; }
+  .crew-live .operator-status-dot { animation: operator-pulse 1.8s ease-out infinite; }
 }
-
-@keyframes avatar-live-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-@keyframes card-live-breathe {
-  0%, 100% { box-shadow: 0 0 20px -6px rgba(16, 185, 129, 0.35); }
-  50% { box-shadow: 0 0 28px -4px rgba(16, 185, 129, 0.6); }
-}
-@keyframes radar-spin { to { transform: rotate(360deg); } }
-@keyframes eye-flare {
-  0% { opacity: 0.6; filter: brightness(1); }
-  100% { opacity: 1; filter: brightness(1.5) drop-shadow(0 0 6px currentColor); }
-}
-@keyframes dot-blip {
-  0%, 100% { opacity: 0.3; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.3); }
-}
-@keyframes scan-oscillate {
-  0% { transform: translateX(-4px); }
-  100% { transform: translateX(4px); }
+@keyframes operator-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .6); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 .lot-size { max-width: 1100px; }
@@ -1060,3 +1062,162 @@ footer a { color: inherit; }
   display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;
 }
 
+
+/* ==========================================================
+   TRADING APP SHELL — PWA terminal design layer
+   ========================================================== */
+:root { --ticker-height: 40px; }
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular, terminal-grade figures everywhere money is shown */
+.quote strong, .levels dd, .entry-value strong, .session-strip strong,
+.metric dd, .price-lg, .ticker-price, .order-price, .lot-result strong,
+.pnl-entry, .report-breakdown td, .history-rows .row-title {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* --- App toolbar: glassy, dense, sticky --- */
+.dashboard-toolbar {
+  min-height: 56px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+.toolbar-context {
+  font-size: .8125rem; font-weight: 650; letter-spacing: .02em;
+}
+.dashboard-sidebar { background: var(--panel); }
+
+/* --- Live market ticker strip --- */
+.market-ticker {
+  display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
+  min-height: var(--ticker-height); margin-bottom: 10px;
+  padding: 6px 12px; overflow-x: auto; scrollbar-width: none;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: linear-gradient(120deg, var(--raised), var(--panel));
+}
+.market-ticker::-webkit-scrollbar { display: none; }
+.ticker-symbol { display: flex; flex-direction: column; gap: 1px; flex: none; }
+.ticker-symbol strong { font-size: .8125rem; font-weight: 750; letter-spacing: .02em; }
+.ticker-symbol small { font-size: .625rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.ticker-price {
+  flex: none; font-size: 1.375rem; font-weight: 750; letter-spacing: -.03em; line-height: 1;
+  color: var(--text);
+}
+.ticker-change {
+  flex: none; padding: 2px 7px; border-radius: 6px; font-size: .75rem; font-weight: 700;
+}
+.ticker-change.up { color: var(--buy); background: color-mix(in srgb, var(--buy) 16%, transparent); }
+.ticker-change.down { color: var(--sell); background: color-mix(in srgb, var(--sell) 16%, transparent); }
+.ticker-spacer { flex: 1 1 auto; }
+.ticker-quote {
+  display: flex; gap: 14px; flex: none; font-size: .75rem; color: var(--muted);
+  border-inline-start: 1px solid var(--line); padding-inline-start: 12px;
+}
+.ticker-quote b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ticker-live {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 3px 8px; border-radius: 999px; font-size: .625rem; font-weight: 800; letter-spacing: .06em;
+  color: var(--buy); background: color-mix(in srgb, var(--buy) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--buy) 45%, transparent);
+}
+.ticker-live .status-dot { width: 5px; height: 5px; }
+.ticker-live.warn { color: var(--sell); background: color-mix(in srgb, var(--sell) 14%, transparent); border-color: color-mix(in srgb, var(--sell) 45%, transparent); }
+
+/* --- Instrument header card --- */
+.market-heading {
+  align-items: center; padding: 12px 14px; margin-bottom: 10px;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(135deg, var(--raised), var(--panel));
+}
+.market-heading h1 { margin-top: 2px; font-size: clamp(1.35rem, 4vw, 1.75rem); letter-spacing: -.03em; }
+.instrument { font-size: .6875rem; letter-spacing: .12em; text-transform: uppercase; }
+.feed-state { padding: 5px 10px; border-radius: 999px; font-size: .625rem; letter-spacing: .04em; }
+
+/* --- Session strip as KPI chips --- */
+.session-strip {
+  border: 0; gap: 8px; margin-bottom: 12px; grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.session-strip div {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel);
+}
+.session-strip div:first-child { padding-inline-start: 10px; }
+.session-strip div + div { border-inline-start: 1px solid var(--line); }
+.session-strip span { font-size: .625rem; text-transform: uppercase; letter-spacing: .06em; }
+.session-strip strong { font-size: .8125rem; font-weight: 700; }
+
+/* --- Panels: softer cards --- */
+.panel { background: var(--panel); box-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset; }
+.panel-heading h2 { font-size: 1rem; font-weight: 700; letter-spacing: -.02em; }
+
+/* --- Signal card as order ticket --- */
+.signal .entry-value {
+  background: color-mix(in srgb, var(--gold) 10%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--line));
+}
+.entry-value strong { font-size: clamp(1.1rem, 5vw, 1.5rem); }
+.levels > div {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--field);
+}
+.levels { gap: 8px; }
+.levels dt { font-size: .625rem; text-transform: uppercase; letter-spacing: .06em; }
+.levels dd { font-size: .9375rem; }
+
+/* --- Compact chart chrome --- */
+.chart-header { padding: 10px 14px; }
+.chart-frames { padding: 4px 10px; }
+.chart-frames button { font-size: .75rem; font-weight: 700; }
+.chart { height: clamp(280px, 52svh, 560px); }
+
+/* --- Buttons: trading app compactness --- */
+button, .photo-picker > span { border-radius: 10px; }
+.primary { box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--gold) 70%, transparent); }
+
+/* --- Mobile app bottom bar: glass + gold active pill --- */
+@media (max-width: 768px) {
+  .mobile-trading-bar {
+    height: calc(60px + env(safe-area-inset-bottom));
+    padding: 0 6px env(safe-area-inset-bottom);
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .28);
+  }
+  .mobile-tab-btn {
+    position: relative; gap: 2px; border-radius: 10px; margin: 4px 2px;
+    color: var(--muted); font-size: .625rem; font-weight: 700; letter-spacing: .01em;
+  }
+  .mobile-tab-btn svg { width: 20px; height: 20px; }
+  .mobile-tab-btn.active { color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); }
+  .mobile-tab-btn.active::before {
+    content: ""; position: absolute; top: 2px; width: 16px; height: 2px; border-radius: 2px;
+    background: var(--gold);
+  }
+  .dashboard-main { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+
+/* --- Desktop: tighter multi-pane terminal --- */
+@media (min-width: 1100px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) minmax(300px, 30%); }
+}
+
+/* --- Standalone PWA safe areas --- */
+@media (display-mode: standalone) {
+  .dashboard-toolbar { padding-top: env(safe-area-inset-top); }
+  .dashboard-main { padding-top: 12px; }
+}
+
+@media (max-width: 570px) {
+  .market-ticker { gap: 8px; padding: 6px 10px; }
+  .ticker-price { font-size: 1.15rem; }
+  .ticker-quote { gap: 10px; padding-inline-start: 8px; }
+  .session-strip div { padding: 7px 8px; }
+}

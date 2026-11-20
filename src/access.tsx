@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
-  AlertTriangle, ArrowUp, Check, CheckCircle2, Copy, Download, Edit2,
-  Gauge, Key, MessageSquare, Plus, RefreshCw, RotateCcw, RotateCw,
-  Search, Send, Sparkles, Trash2, UserPlus, Users, X
+  Activity, AlertTriangle, ArrowUp, BrainCircuit, Check, CheckCircle2, Copy, Cpu,
+  Dices, Download, Edit2, Gauge, Key, LineChart, Megaphone, MessageSquare, Plus,
+  Radio, RefreshCw, RotateCcw, RotateCw, Search, Send, ShieldCheck, Sparkles,
+  Trash2, TrendingUp, UserPlus, Users, Waypoints, Wind, X
 } from "lucide-react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
@@ -428,290 +429,35 @@ function shortReason(value: string | null) {
   return value.length > 34 ? `${value.slice(0, 33)}…` : value;
 }
 
-function CyberAvatar({ name, tone }: { name: string; tone: string }) {
-  const isLive = tone === "live";
+const OPERATOR_ICONS: Record<string, ReactNode> = {
+  kuro: <Radio size={12} />,
+  kaze: <Wind size={12} />,
+  mizu: <ShieldCheck size={12} />,
+  nanao: <BrainCircuit size={12} />,
+  hayate: <Cpu size={12} />,
+  ryu: <Send size={12} />,
+  shinra: <LineChart size={12} />,
+  taka: <TrendingUp size={12} />,
+  ren: <Waypoints size={12} />,
+  kai: <Dices size={12} />,
+  hikari: <Megaphone size={12} />,
+};
 
-  if (name === "kuro") {
-    return (
-      <div className={`cyber-avatar avatar-kuro ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <radialGradient id="kuro-metal" cx="35%" cy="30%" r="70%">
-              <stop offset="0%" stopColor="#475569" />
-              <stop offset="60%" stopColor="#1e293b" />
-              <stop offset="100%" stopColor="#090d16" />
-            </radialGradient>
-            <linearGradient id="kuro-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="100%" stopColor="#0284c7" />
-            </linearGradient>
-          </defs>
-          <circle cx="32" cy="32" r="30" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" className="avatar-radar" />
-          <polygon points="32,6 54,18 54,46 32,58 10,46 10,18" fill="url(#kuro-metal)" stroke="#94a3b8" strokeWidth="1.5" />
-          <rect x="18" y="26" width="28" height="10" rx="3" fill="#020617" stroke="#38bdf8" strokeWidth="1" />
-          <line x1="20" y1="31" x2="44" y2="31" stroke="url(#kuro-cyan)" strokeWidth="2.5" strokeLinecap="round" className="avatar-scan-bar" />
-          <circle cx="32" cy="31" r="2.5" fill="#ffffff" />
-          <circle cx="32" cy="49" r="2.5" fill="#38bdf8" className={isLive ? "pulse-dot" : ""} />
-        </svg>
-      </div>
-    );
-  }
+function initialsOf(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
 
-  if (name === "kaze") {
-    return (
-      <div className={`cyber-avatar avatar-kaze ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="kaze-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#27272a" />
-              <stop offset="70%" stopColor="#18181b" />
-              <stop offset="100%" stopColor="#09090b" />
-            </linearGradient>
-            <linearGradient id="kaze-gold" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#fbbf24" />
-              <stop offset="100%" stopColor="#f59e0b" />
-            </linearGradient>
-          </defs>
-          <path d="M12 20 Q32 8 52 20 L56 42 Q32 58 8 42 Z" fill="url(#kaze-metal)" stroke="#f59e0b" strokeWidth="1.5" />
-          <path d="M6 24 L14 26 L12 36 Z" fill="#f59e0b" opacity="0.8" />
-          <path d="M58 24 L50 26 L52 36 Z" fill="#f59e0b" opacity="0.8" />
-          <path d="M16 26 Q32 20 48 26 L46 36 Q32 30 18 36 Z" fill="#09090b" stroke="#f59e0b" strokeWidth="1" />
-          <circle cx="25" cy="30" r="3" fill="url(#kaze-gold)" className={isLive ? "avatar-eye-pulse" : ""} />
-          <circle cx="39" cy="30" r="3" fill="url(#kaze-gold)" className={isLive ? "avatar-eye-pulse" : ""} />
-          <line x1="26" y1="44" x2="26" y2="48" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="30" y1="42" x2="30" y2="50" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="34" y1="42" x2="34" y2="50" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="38" y1="44" x2="38" y2="48" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "mizu") {
-    return (
-      <div className={`cyber-avatar avatar-mizu ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="mizu-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#1e3a8a" />
-              <stop offset="60%" stopColor="#0f172a" />
-              <stop offset="100%" stopColor="#020617" />
-            </linearGradient>
-            <linearGradient id="mizu-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#67e8f9" />
-              <stop offset="100%" stopColor="#38bdf8" />
-            </linearGradient>
-          </defs>
-          <path d="M32 6 L54 14 L50 44 Q32 58 14 44 L10 14 Z" fill="url(#mizu-metal)" stroke="#38bdf8" strokeWidth="1.5" />
-          <polygon points="32,10 40,16 32,22 24,16" fill="#38bdf8" opacity="0.6" />
-          <path d="M18 28 L46 28 L42 40 L22 40 Z" fill="#020617" stroke="#38bdf8" strokeWidth="1" />
-          <rect x="23" y="32" width="6" height="4" fill="url(#mizu-cyan)" className={isLive ? "avatar-eye-pulse" : ""} />
-          <rect x="35" y="32" width="6" height="4" fill="url(#mizu-cyan)" className={isLive ? "avatar-eye-pulse" : ""} />
-          <line x1="28" y1="48" x2="36" y2="48" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "nanao") {
-    return (
-      <div className={`cyber-avatar avatar-nanao ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="nanao-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#064e3b" />
-              <stop offset="60%" stopColor="#022c22" />
-              <stop offset="100%" stopColor="#020617" />
-            </linearGradient>
-          </defs>
-          <circle cx="32" cy="32" r="24" fill="url(#nanao-metal)" stroke="#10b981" strokeWidth="1.5" />
-          <path d="M18 18 L24 24 M46 18 L40 24 M32 10 L32 18" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" opacity="0.75" />
-          <circle cx="18" cy="18" r="2" fill="#34d399" />
-          <circle cx="46" cy="18" r="2" fill="#34d399" />
-          <circle cx="32" cy="10" r="2" fill="#34d399" />
-          <path d="M18 28 Q32 24 46 28 L44 38 Q32 34 20 38 Z" fill="#020617" stroke="#10b981" strokeWidth="1" />
-          <circle cx="26" cy="32" r="2.5" fill="#34d399" className={isLive ? "avatar-eye-pulse" : ""} />
-          <circle cx="32" cy="32" r="2.5" fill="#34d399" className={isLive ? "avatar-eye-pulse" : ""} />
-          <circle cx="38" cy="32" r="2.5" fill="#34d399" className={isLive ? "avatar-eye-pulse" : ""} />
-          <path d="M26 46 Q32 50 38 46" fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "hayate") {
-    return (
-      <div className={`cyber-avatar avatar-hayate ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="hayate-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#451a03" />
-              <stop offset="50%" stopColor="#78350f" />
-              <stop offset="100%" stopColor="#18181b" />
-            </linearGradient>
-            <linearGradient id="hayate-plasma" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#fef08a" />
-              <stop offset="50%" stopColor="#f59e0b" />
-              <stop offset="100%" stopColor="#d97706" />
-            </linearGradient>
-          </defs>
-          <polygon points="32,4 44,16 58,20 48,36 50,56 32,48 14,56 16,36 6,20 20,16" fill="url(#hayate-metal)" stroke="#f59e0b" strokeWidth="1.5" />
-          <polygon points="32,10 40,22 48,34 32,40 16,34 24,22" fill="#09090b" stroke="#fbbf24" strokeWidth="1" />
-          <path d="M20 25 L44 25 L38 32 L26 32 Z" fill="url(#hayate-plasma)" className={isLive ? "avatar-scan-bar" : ""} />
-          <circle cx="32" cy="22" r="3" fill="#ffffff" className={isLive ? "pulse-dot" : ""} />
-          <line x1="20" y1="46" x2="14" y2="58" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
-          <line x1="44" y1="46" x2="50" y2="58" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "ryu") {
-    return (
-      <div className={`cyber-avatar avatar-ryu ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="ryu-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#7f1d1d" />
-              <stop offset="60%" stopColor="#450a0a" />
-              <stop offset="100%" stopColor="#0a0505" />
-            </linearGradient>
-            <linearGradient id="ryu-laser" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#f87171" />
-              <stop offset="50%" stopColor="#ef4444" />
-              <stop offset="100%" stopColor="#dc2626" />
-            </linearGradient>
-          </defs>
-          <polygon points="32,4 52,14 60,34 50,56 32,60 14,56 4,34 12,14" fill="url(#ryu-metal)" stroke="#ef4444" strokeWidth="1.5" />
-          <polygon points="26,16 38,16 44,28 32,40 20,28" fill="#180505" stroke="#f87171" strokeWidth="1" />
-          <polygon points="12,18 20,8 26,18" fill="#dc2626" />
-          <polygon points="52,18 44,8 38,18" fill="#dc2626" />
-          <line x1="16" y1="30" x2="48" y2="30" stroke="url(#ryu-laser)" strokeWidth="3" strokeLinecap="round" className={isLive ? "avatar-scan-bar" : ""} />
-          <circle cx="24" cy="30" r="2.5" fill="#ffffff" />
-          <circle cx="40" cy="30" r="2.5" fill="#ffffff" />
-          <polygon points="32,44 38,52 26,52" fill="#ef4444" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "shinra") {
-    return (
-      <div className={`cyber-avatar avatar-shinra ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <radialGradient id="shinra-core" cx="40%" cy="30%" r="70%">
-              <stop offset="0%" stopColor="#7c3aed" />
-              <stop offset="60%" stopColor="#4c1d95" />
-              <stop offset="100%" stopColor="#0f0728" />
-            </radialGradient>
-            <linearGradient id="shinra-glow" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#e9d5ff" />
-              <stop offset="100%" stopColor="#a855f7" />
-            </linearGradient>
-          </defs>
-          <circle cx="32" cy="32" r="30" fill="none" stroke="#a855f7" strokeWidth="1" strokeDasharray="4 2" className="avatar-radar" />
-          <polygon points="32,6 56,20 56,44 32,58 8,44 8,20" fill="url(#shinra-core)" stroke="#c084fc" strokeWidth="1.5" />
-          <circle cx="32" cy="32" r="14" fill="#0f0728" stroke="#a855f7" strokeWidth="1" />
-          <polygon points="32,22 39,32 32,42 25,32" fill="url(#shinra-glow)" className={isLive ? "avatar-eye-pulse" : ""} />
-          <circle cx="32" cy="32" r="3" fill="#ffffff" />
-          <circle cx="32" cy="12" r="2" fill="#c084fc" />
-          <circle cx="32" cy="52" r="2" fill="#c084fc" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "taka") {
-    return (
-      <div className={`cyber-avatar avatar-taka ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="taka-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#78350f" />
-              <stop offset="60%" stopColor="#451a03" />
-              <stop offset="100%" stopColor="#18181b" />
-            </linearGradient>
-          </defs>
-          <polygon points="32,6 56,24 46,56 18,56 8,24" fill="url(#taka-metal)" stroke="#f59e0b" strokeWidth="1.5" />
-          <line x1="12" y1="20" x2="52" y2="20" stroke="#fbbf24" strokeWidth="1" strokeDasharray="2 2" />
-          <line x1="32" y1="10" x2="32" y2="52" stroke="#fbbf24" strokeWidth="1" strokeDasharray="2 2" />
-          <polygon points="20,28 32,36 44,28 32,44" fill="#18181b" stroke="#f59e0b" strokeWidth="1" />
-          <circle cx="26" cy="32" r="2.5" fill="#f59e0b" className={isLive ? "avatar-eye-pulse" : ""} />
-          <circle cx="38" cy="32" r="2.5" fill="#f59e0b" className={isLive ? "avatar-eye-pulse" : ""} />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "ren") {
-    return (
-      <div className={`cyber-avatar avatar-ren ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="ren-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#0e7490" />
-              <stop offset="60%" stopColor="#164e63" />
-              <stop offset="100%" stopColor="#082f49" />
-            </linearGradient>
-          </defs>
-          <polygon points="32,6 54,18 54,46 32,58 10,46 10,18" fill="url(#ren-metal)" stroke="#38bdf8" strokeWidth="1.5" />
-          <rect x="20" y="20" width="24" height="24" rx="4" fill="#082f49" stroke="#67e8f9" strokeWidth="1" />
-          <rect x="24" y="24" width="16" height="5" fill="#38bdf8" opacity="0.8" />
-          <rect x="24" y="35" width="16" height="5" fill="#38bdf8" opacity="0.8" />
-          <line x1="22" y1="32" x2="42" y2="32" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="2 2" className={isLive ? "avatar-scan-bar" : ""} />
-        </svg>
-      </div>
-    );
-  }
-
-  if (name === "kai") {
-    return (
-      <div className={`cyber-avatar avatar-kai ${tone}`}>
-        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="kai-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#065f46" />
-              <stop offset="60%" stopColor="#064e3b" />
-              <stop offset="100%" stopColor="#022c22" />
-            </linearGradient>
-          </defs>
-          <circle cx="32" cy="32" r="26" fill="url(#kai-metal)" stroke="#10b981" strokeWidth="1.5" />
-          <circle cx="22" cy="24" r="3" fill="#34d399" />
-          <circle cx="42" cy="24" r="3" fill="#34d399" />
-          <circle cx="32" cy="38" r="4" fill="#6ee7b7" className={isLive ? "avatar-eye-pulse" : ""} />
-          <line x1="22" y1="24" x2="32" y2="38" stroke="#10b981" strokeWidth="1.2" />
-          <line x1="42" y1="24" x2="32" y2="38" stroke="#10b981" strokeWidth="1.2" />
-          <circle cx="32" cy="18" r="2" fill="#34d399" />
-          <line x1="32" y1="18" x2="32" y2="38" stroke="#10b981" strokeWidth="1" strokeDasharray="2 2" />
-        </svg>
-      </div>
-    );
-  }
-
-  // hikari
+function OperatorAvatar({ name, label, tone }: { name: string; label: string; tone: string }) {
   return (
-    <div className={`cyber-avatar avatar-hikari ${tone}`}>
-      <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="hikari-metal" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#581c87" />
-            <stop offset="60%" stopColor="#3b0764" />
-            <stop offset="100%" stopColor="#0f051d" />
-          </linearGradient>
-          <linearGradient id="hikari-laser" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#f472b6" />
-            <stop offset="50%" stopColor="#c084fc" />
-            <stop offset="100%" stopColor="#a855f7" />
-          </linearGradient>
-        </defs>
-        <polygon points="4,20 16,28 12,40" fill="#a855f7" opacity="0.8" />
-        <polygon points="60,20 48,28 52,40" fill="#a855f7" opacity="0.8" />
-        <path d="M16 16 L48 16 L52 42 Q32 58 12 42 Z" fill="url(#hikari-metal)" stroke="#a855f7" strokeWidth="1.5" />
-        <polygon points="12,30 52,30 46,36 18,36" fill="#0f051d" stroke="#c084fc" strokeWidth="1" />
-        <line x1="14" y1="33" x2="50" y2="33" stroke="url(#hikari-laser)" strokeWidth="2.5" strokeLinecap="round" className={isLive ? "avatar-scan-bar" : ""} />
-        <polygon points="32,44 35,49 29,49" fill="#c084fc" />
-      </svg>
+    <div className={`operator-badge tone-${tone}`}>
+      <div className="operator-avatar">
+        <span className="operator-initials">{initialsOf(label || name)}</span>
+        <span className="operator-icon">{OPERATOR_ICONS[name] ?? <Activity size={12} />}</span>
+        <span className="operator-status-dot" />
+      </div>
     </div>
   );
 }
@@ -722,7 +468,7 @@ function CrewCard({ row, isCore = false }: { row: WorkerRow; isCore?: boolean })
     <article className={`crew-card crew-${tone} ${isCore ? "crew-core" : ""}`} title={row.reason ?? row.role}>
       <span className="crew-bubble">{shortReason(row.reason) ?? row.status}</span>
       <div className="crew-avatar-frame">
-        <CyberAvatar name={row.name} tone={tone} />
+        <OperatorAvatar name={row.name} label={row.label} tone={tone} />
       </div>
       <div className="crew-info">
         <strong>{row.label}</strong>
@@ -796,7 +542,7 @@ function WorkerStatus() {
         </div>
         <div className="kuro-hub-body">
           <div className="kuro-hub-header">
-            <span className="hub-tag">CORE COMMAND SQUADRON</span>
+            <span className="hub-tag">CORE SERVICES</span>
             <span className="hub-subhead">Kuro (Feed) · Hayate (Parallel Compute) · Ryu (Dispatch) · Shinra (Quantitative)</span>
           </div>
           <div className="kuro-hud-grid">
@@ -833,8 +579,8 @@ function WorkerStatus() {
         <div className="shinra-division-card">
           <div className="shinra-division-head">
             <div className="shinra-title-group">
-              <span className="division-badge">RESEARCH DIVISION</span>
-              <strong style={{ color: "#ffffff", fontSize: "0.875rem" }}>Shinra Quantitative Intelligence</strong>
+              <span className="division-badge">RESEARCH DESK</span>
+              <strong style={{ color: "#ffffff", fontSize: "0.875rem" }}>Shinra Quant Desk</strong>
               <span className="small muted">· 1,000-candle structural geometry, Fair Value Gaps & probability engine</span>
             </div>
             <Badge tone="accent">Active Matrix</Badge>
@@ -851,7 +597,7 @@ function WorkerStatus() {
       )}
 
       <div className="crew-head">
-        <strong>Execution Pipeline</strong>
+        <strong>Execution Desk</strong>
         <span className="pipeline-count-badge">
           {report.lanes.flatMap(lane => lane.stages).concat(report.kuro)
             .filter(row => workerClass(row.status) === "live").length} live · {report.lanes.length} strategy lanes

@@ -555,6 +555,33 @@ function Alerts({ data }: { data: Dashboard }) {
   </section>;
 }
 
+function MarketTicker({ data, error }: { data: Dashboard | null; error: string }) {
+  const last = data?.candles.at(-1);
+  const previous = data?.candles.at(-2);
+  const change = last && previous ? last.close - previous.close : null;
+  const percent = change != null && previous ? (change / previous.close) * 100 : null;
+  const rising = (change ?? 0) >= 0;
+  const live = !error && ["LIVE", "DEMO"].includes(data?.status ?? "");
+  const state = error ? "STALE" : data?.status ?? "CONNECTING";
+  return (
+    <div className="market-ticker" role="status" aria-label="Live market quote">
+      <div className="ticker-symbol"><strong>{data?.symbol ?? "XAUUSD"}</strong><small>Gold · Spot</small></div>
+      <div className="ticker-price">{price(last?.close ?? data?.quote?.bid)}</div>
+      <span className={`ticker-change ${rising ? "up" : "down"}`}>
+        {change == null ? "–" : `${rising ? "▲" : "▼"} ${Math.abs(change).toFixed(2)}${percent == null ? "" : ` (${Math.abs(percent).toFixed(2)}%)`}`}
+      </span>
+      <span className="ticker-spacer" />
+      <div className="ticker-quote">
+        <span>Bid <b>{price(data?.quote?.bid)}</b></span>
+        <span>Ask <b>{price(data?.quote?.ask)}</b></span>
+      </div>
+      <span className={`ticker-live ${error || data?.status === "STALE" ? "warn" : ""}`}>
+        <span className="status-dot" aria-hidden="true" />{live ? state.toUpperCase() : state}
+      </span>
+    </div>
+  );
+}
+
 function App({ role, signOut, expired }: {
   role: string | null; signOut: () => Promise<void>; expired: () => void;
 }) {
@@ -700,6 +727,7 @@ function App({ role, signOut, expired }: {
         {showNotificationSetup && <a href="#alerts">Set up notifications</a>}
       </div>}
       <div hidden={view !== "signal"}>
+      <MarketTicker data={data} error={error} />
       <div className="market-heading">
         <div><p className="instrument">GOLD / US DOLLAR</p><h1>{data?.symbol ?? "XAUUSD"} <span>M15</span></h1></div>
         <div className={`feed-state ${data?.status === "STALE" || error ? "warn" : ""}`}>

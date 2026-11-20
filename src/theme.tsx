@@ -5,15 +5,15 @@ export type Theme = "light" | "dark";
 
 export function readTheme(): Theme {
   try {
-    return localStorage.getItem("goldsignal-theme") === "dark" ? "dark" : "light";
+    return localStorage.getItem("goldsignal-theme") === "light" ? "light" : "dark";
   } catch {
-    return "light";
+    return "dark";
   }
 }
 
 export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#141516" : "#ffffff");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0b0c0f" : "#ffffff");
   window.dispatchEvent(new Event("goldsignal-theme"));
 }
 
