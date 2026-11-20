@@ -13,7 +13,8 @@ from filelock import FileLock
 from . import news
 from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, purge_admin_alerts, send_pending
-from .config import (AI_BEST_EFFORT, DAILY_SETUP, DB, ENTRY_TTL, MODE, REVIEW,
+from .config import (AI_BEST_EFFORT, DAILY_SETUP, DB, ENTRY_TTL, MAX_ACTIVE_SIGNALS,
+                     MAX_ENTRIES_PER_DAY, MODE, REVIEW, SIGNAL_DISPLACEMENT, SIGNAL_SPACING_MIN,
                      SESSION_CONFIDENCE_FILTER, SESSION_MIN_EXPECTANCY, SESSION_MIN_GRADE,
                      STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now)
 from .diagnostics import record, record_in
@@ -70,6 +71,56 @@ def research_gate(item, research_res, session_res, bars, now):
               f"({SESSION_MIN_EXPECTANCY:g}% required), flow "
               f"{'aligned' if aligned else 'against'} {item['direction']}.")
     return reason, edge, aligned, grade_ok
+
+
+def active_trades(store):
+    return [item for item in store.all("signal") if item.get("status") in ("PENDING", "FILLED")]
+
+
+def exposure_reason(item, trades, quote, now):
+    if not trades:
+        return None
+    if len(trades) >= MAX_ACTIVE_SIGNALS:
+        return f"Exposure cap reached ({len(trades)} active signals)."
+    latest = max(trades, key=lambda row: row.get("created", 0))
+    if latest.get("status") == "PENDING":
+        return "Existing pending entry has not filled."
+    if now - latest.get("created", 0) < SIGNAL_SPACING_MIN * 60:
+        return f"Entry spacing active ({SIGNAL_SPACING_MIN}m minimum)."
+    if item.get("direction") != latest.get("direction"):
+        return "Opposite-direction entry blocked while trade active."
+    price = quote.get("ask") if item["direction"] == "BUY" else quote.get("bid")
+    if price is None:
+        return "Live quote unavailable for exposure check."
+    anchor = latest.get("reference")
+    if anchor is None:
+        entry = latest.get("entry") or []
+        anchor = sum(entry) / len(entry) if entry else price
+    moved = price - anchor if item["direction"] == "BUY" else anchor - price
+    if moved < SIGNAL_DISPLACEMENT:
+        return f"No meaningful displacement from active trade ({moved:.2f} < {SIGNAL_DISPLACEMENT:.2f})."
+    return None
+
+
+def daily_cap_reason(signals, now):
+    today = day_key(now)
+    count = sum(day_key(item.get("created", 0)) == today and item.get("status") != "DAILY_WATCH"
+                for item in signals)
+    if count >= MAX_ENTRIES_PER_DAY:
+        return f"Daily entry cap reached ({MAX_ENTRIES_PER_DAY} signals)."
+    return None
+
+
+def is_b_candidate(item):
+    return str(item.get("strategy") or "").startswith("B")
+
+
+def clear_b_candidate(b_analysis, reason):
+    if not b_analysis:
+        return
+    b_analysis["candidate"] = None
+    b_analysis["next_step"] = f"WAIT · {reason[:160]}"
+    b_analysis["reason"] = reason
 
 
 def daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, now):
@@ -403,21 +454,24 @@ def process(source, step, cursor, calendar, revision):
         mark_division(workers, "kai", "live" if kai_data.get("matches") else "idle", reason=f"K={kai_data.get('matches', 0)} matches · Win {kai_data.get('win_rate', 0)}%", at=now)
         mark_division(workers, "sora", "live" if session_res.get("aggressive") else "idle", reason=session_res["summary"], at=now)
 
-        active_signal = next((s for s in store.all("signal") if s.get("status") in ("PENDING", "FILLED")), None)
-        if active_signal:
-            scalp = None
-            if b_analysis:
-                b_analysis["candidate"] = None
-                b_analysis["active_trade"] = active_signal
-                b_analysis["next_step"] = f"LOCKED · {active_signal['direction']} ACTIVE"
-                b_analysis["reason"] = f"Trade active (TP {active_signal.get('hits', 0)}/3) · Trailing stop at {active_signal.get('stop', 0):.2f}"
-                scalp_scan = b_analysis["reason"]
+        trades = active_trades(store)
+        active_signal = max(trades, key=lambda row: row.get("created", 0)) if trades else None
+        b_lock_reason = exposure_reason(scalp, trades, quote, now) if scalp else None
+        if active_signal and b_analysis:
+            b_analysis["active_trade"] = active_signal
+            if b_lock_reason:
+                b_analysis["next_step"] = f"LOCKED · {b_lock_reason}"
+                b_analysis["reason"] = f"Trade active (TP {active_signal.get('hits', 0)}/3) · {b_lock_reason}"
+            else:
+                b_analysis["next_step"] = f"NEW SETUP ALLOWED · {active_signal['direction']} ACTIVE"
+                b_analysis["reason"] = (f"Active {active_signal['direction']} trade at TP {active_signal.get('hits', 0)}/3; "
+                                        f"new same-direction setup allowed.")
+            scalp_scan = b_analysis["reason"]
 
         mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
                          reason=scan.get("reason"), at=now)
-        if active_signal:
-            mark_lane_worker(workers, "B", "kaze", "live",
-                             reason=f"Locked on active {active_signal['direction']} · TP {active_signal.get('hits', 0)}/3", at=now)
+        if b_lock_reason:
+            mark_lane_worker(workers, "B", "kaze", "live", reason=b_lock_reason, at=now)
         else:
             mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
                              reason=scalp_scan, at=now)
@@ -464,7 +518,7 @@ def process(source, step, cursor, calendar, revision):
             lane = "C" if item.get("id", "").startswith("c_") else ("B" if item.get("strategy") else "A")
             item.setdefault("lane", lane)
             item["grade"] = signal_grade(item)
-        if SESSION_CONFIDENCE_FILTER and active_signal is None:
+        if SESSION_CONFIDENCE_FILTER:
             for item in pending:
                 reason, edge, aligned, grade_ok = research_gate(
                     item, research_res, session_res, b_snapshot.get("bars", []), snapshot["now"])
@@ -538,6 +592,9 @@ def process(source, step, cursor, calendar, revision):
         track(store, "shadow", snapshot, calendar, stopped)
         now = snapshot["now"] if DEMO else utc_now()
         quote = snapshot["quote"]
+        active_snapshot = active_trades(store)
+        all_signals = store.all("signal")
+        daily_block = daily_cap_reason(all_signals, now)
         if stopped:
             scan["reason"] = "New entries paused by admin."
             scalp_scan = scan["reason"]
@@ -559,43 +616,59 @@ def process(source, step, cursor, calendar, revision):
                 record_in(store, "Admin · Research watch",
                           f"{SYMBOL} {item['direction']} {grade} held. {reason} Admin diagnostics only.",
                           level="info")
-                if item.get("strategy"):
+                if is_b_candidate(item):
                     scalp = None
-                    if b_analysis:
-                        b_analysis["candidate"] = None
-                        b_analysis["next_step"] = "RESEARCH WATCH"
+                    clear_b_candidate(b_analysis, reason)
+            exposure_block = exposure_reason(item, active_snapshot, quote, now)
+            if exposure_block:
+                decision, reason = "WAIT", exposure_block
             baseline, baseline_reason = gate(item, quote, now)
             if demo_account.enabled() and baseline == "CONFIRM" and not store.get("demo_eligible", key):
                 store.put("demo_eligible", key, dict(observed_at=utc_now(), quote_time=quote["time"]))
             capped = sum(stamp > now - 3600 for stamp in recent_entries) >= ENTRY_LIMIT_PER_HOUR
             if not stopped and capped and baseline == "CONFIRM":
                 decision, reason = "WAIT", ENTRY_LIMIT_REASON
+            if not stopped and daily_block and baseline == "CONFIRM":
+                decision, reason = "WAIT", daily_block
             evidence = previous[key] or {}
             first = evidence.get("first", dict(time=now, quote=quote, calendar=calendar, result=decision, reason=reason))
-            store.put("candidate", key, {**item, "first": first, "evaluated": now, "decision": decision,
-                                        "reason": reason, "quote": quote, "calendar_sources": calendar.get("sources", {}),
-                                        "calendar_reason": news.restriction(calendar, now, DEMO),
-                                        "baseline": baseline, "baseline_reason": baseline_reason, "model": model,
-                                        "review_provider": provider, "gemini_retry": retries[key]})
+            candidate_record = {**item, "first": first, "evaluated": now, "decision": decision,
+                                "reason": reason, "quote": quote, "calendar_sources": calendar.get("sources", {}),
+                                "calendar_reason": news.restriction(calendar, now, DEMO),
+                                "baseline": baseline, "baseline_reason": baseline_reason, "model": model,
+                                "review_provider": provider, "gemini_retry": retries[key]}
+            store.put("candidate", key, candidate_record)
+
             if item.get("strategy"):
                 scalp_scan = f"{decision}: {reason}"
             mark_lane_worker(workers, item.get("lane", "A"), "mizu", decision, reason=reason, at=now)
             if not stopped and baseline == "CONFIRM" and (not effective_model or effective_model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(item, exits=[], created=now))
+            published_now = False
             if decision == "CONFIRM":
                 publish_time = snapshot["now"] if DEMO else utc_now()
-                if evaluate(item, quote, publish_time, calendar, review_gate)[0] == "CONFIRM":
+                final_decision, final_reason = evaluate(item, quote, publish_time, calendar, review_gate)
+                if final_decision == "CONFIRM":
                     item.update(created=publish_time)
                     if effective_model:
                         item["review"] = {"provider": provider, "reason": effective_model[1]}
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
+                    active_snapshot.append(item)
+                    all_signals.append(item)
                     record_event(store, item, "ENTRY", publish_time)
                     dispatch_telegram(format_entry(item, publish_time), category="SIGNAL", store=store)
                     mark_lane_worker(workers, item.get("lane", "A"), "hikari", "published",
                                      reason=f"{item['direction']} {key}", at=now)
-                    if item.get("strategy"):
+                    if is_b_candidate(item):
                         scalp_scan = f"{item['direction']} scalp signal published."
+                    published_now = True
+                else:
+                    decision, reason = "WAIT", final_reason
+                    store.put("candidate", key, {**candidate_record, "decision": decision, "reason": reason})
+            if is_b_candidate(item) and not published_now:
+                scalp = None
+                clear_b_candidate(b_analysis, reason)
         if DAILY_SETUP:
             daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, now)
         store.save_bars(snapshot["bars"], revision)

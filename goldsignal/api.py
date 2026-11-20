@@ -1,3 +1,4 @@
+from collections import Counter
 import math
 import os
 import secrets
@@ -159,6 +160,45 @@ def delete_performance_signal(body: DeletePerformanceSignal, request: Request):
             store.delete("shadow", body.signal_id)
     record("Admin performance", f"Deleted signal record {body.signal_id}; archived as {archive_id}.", level="info")
     return {"deleted": True, "signal_id": body.signal_id, "archive_id": archive_id}
+
+
+@app.get("/api/admin/scanner-report")
+def admin_scanner_report(request: Request, period: Literal["day", "week", "month", "all"] = "day"):
+    admin(request)
+    with transaction() as store:
+        clock = store.get("state", "market", {}).get("now", utc_now()) if MODE == "demo" else utc_now()
+        candidates = store.all("candidate")
+        signals = [item for item in store.all("signal") if item.get("status") != "DAILY_WATCH"]
+    today = datetime.fromtimestamp(clock, MY).date()
+    start = {"day": today, "week": today - timedelta(days=today.weekday()),
+             "month": today.replace(day=1), "all": None}[period]
+
+    def in_period(stamp):
+        day = datetime.fromtimestamp(stamp, MY).date()
+        return day <= today and (start is None or day >= start)
+
+    rows = [item for item in candidates
+            if in_period(item.get("evaluated") or item.get("first", {}).get("time", item.get("created", 0)))]
+    blocked_rows = [item for item in rows if item.get("decision") in ("WAIT", "REJECT")]
+    published = [item for item in signals if in_period(item.get("created", 0))]
+    reasons = Counter(str((item.get("first") or {}).get("reason") or item.get("reason") or "Unspecified")[:160]
+                      for item in blocked_rows)
+    return {
+        "detected": len(rows),
+        "held": sum(item.get("decision") == "WAIT" for item in rows),
+        "published": len(published),
+        "wins": sum(is_realized(item) and (item.get("hits", 0) > 0 or (item.get("result_per_lot") or 0) > 0)
+                    for item in published),
+        "losses": sum(is_realized(item) and not item.get("hits") and (item.get("result_per_lot") or 0) < 0
+                      for item in published),
+        "missed": sum(item.get("decision") == "REJECT" or "expired" in str(item.get("reason", "")).lower()
+                      for item in rows),
+        "blocked_reasons": [{"reason": reason, "count": count}
+                            for reason, count in reasons.most_common(8)],
+        "by_lane": dict(Counter(str(item.get("lane") or "A") for item in rows)),
+        "by_strategy": dict(Counter(str(item.get("strategy") or "M5 setup / M1 entry") for item in rows)),
+        "by_session": dict(Counter(str(item.get("session") or "Unknown") for item in rows)),
+    }
 
 
 @app.get("/api/admin/workers")

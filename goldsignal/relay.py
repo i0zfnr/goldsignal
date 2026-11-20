@@ -27,6 +27,7 @@ ROUTES = {("GET", "/api/dashboard"), ("GET", "/api/performance"), ("GET", "/api/
           ("PUT", "/api/admin/pause"), ("GET", "/api/admin/errors"), ("DELETE", "/api/admin/errors"),
            ("GET", "/api/admin/performance"), ("POST", "/api/admin/performance/reset"),
            ("DELETE", "/api/admin/performance/signal"),
+           ("GET", "/api/admin/scanner-report"),
 
           ("GET", "/api/admin/workers"),
           ("POST", "/api/entry-open")}

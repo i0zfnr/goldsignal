@@ -1017,12 +1017,14 @@ function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) =
     wins: number; losses: number; win_rate: number; total_pnl_per_lot: number;
     signals: any[];
   } | null>(null);
+  const [scanner, setScanner] = useState<any>(null);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
   async function load() {
     try {
       setData(await api<any>("/api/admin/performance"));
+      setScanner(await api<any>("/api/admin/scanner-report"));
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -1105,6 +1107,26 @@ function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) =
               <strong className="perf-val">{data.shadow_count}</strong>
             </div>
           </div>
+
+          {scanner && <>
+            <h4 style={{ margin: "18px 0 8px", fontSize: "0.875rem", fontWeight: 700 }}>Daily Scanner Report</h4>
+            <div className="admin-perf-grid">
+              <div className="admin-perf-card"><span className="perf-label">DETECTED</span><strong className="perf-val">{scanner.detected}</strong></div>
+              <div className="admin-perf-card"><span className="perf-label">HELD</span><strong className="perf-val">{scanner.held}</strong></div>
+              <div className="admin-perf-card"><span className="perf-label">PUBLISHED</span><strong className="perf-val">{scanner.published}</strong></div>
+              <div className="admin-perf-card"><span className="perf-label">W / L / MISSED</span><strong className="perf-val">{scanner.wins} / {scanner.losses} / {scanner.missed}</strong></div>
+            </div>
+            {scanner.blocked_reasons.length > 0 && <div className="admin-signals-table-wrap" style={{ marginTop: 8 }}>
+              <table className="report-breakdown">
+                <thead><tr><th>First Block Reason</th><th>Count</th></tr></thead>
+                <tbody>
+                  {scanner.blocked_reasons.map((row: any) => <tr key={row.reason}>
+                    <td>{row.reason}</td><td>{row.count}</td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>}
+          </>}
 
           <h4 style={{ margin: "18px 0 8px", fontSize: "0.875rem", fontWeight: 700 }}>Recent Executed Signals ({data.signals.length})</h4>
           {data.signals.length > 0 ? (

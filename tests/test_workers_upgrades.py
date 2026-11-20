@@ -215,6 +215,34 @@ def test_admin_can_delete_single_performance_record(db, monkeypatch):
         assert len(archived["events"]) == 1 and len(archived["alerts"]) == 1
 
 
+def test_admin_scanner_report(db, monkeypatch):
+    from goldsignal import store
+    from goldsignal.config import utc_now
+
+    password = "fixture-admin-password"
+    salt = "00112233445566778899aabbccddeeff"
+    monkeypatch.setenv("ADMIN_EMAIL", "fixture@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", f"{salt}:{password_hash(password, salt)}")
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
+    now = utc_now()
+    with store.transaction() as data:
+        data.put("state", "market", {"now": now})
+        data.put("candidate", "c1", dict(id="c1", evaluated=now, decision="WAIT",
+                                         reason="current reason", first={"reason": "No active M15 liquidity zone."},
+                                         lane="B", strategy="B · liquidity scalp", session="London"))
+        data.put("signal", "s1", dict(id="s1", created=now, status="COMPLETED", grade="A",
+                                      fill=100, hits=1, result_per_lot=1,
+                                      exits=[dict(time=now + 60, price=101, fraction=1)]))
+
+    with TestClient(app) as operator:
+        operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
+        report = operator.get("/api/admin/scanner-report?period=day").json()
+
+    assert report["detected"] >= 1 and report["held"] >= 1
+    assert report["published"] >= 1 and report["wins"] >= 1
+    assert any(row["reason"] == "No active M15 liquidity zone." for row in report["blocked_reasons"])
+
+
 def test_hayate_and_ryu_workers_telemetry(db):
     from goldsignal import workers
     state = workers.blank()

@@ -37,6 +37,54 @@ def test_confirmed_swing_timing():
     assert h1_sw[0]["confirmed"] == 4 * 3600 + 3600
 
 
+def test_trend_continuation_candidate_is_strict_and_two_r():
+    now = 2700
+    m5 = [
+        make_bar(0, 103, 103.2, 102.5, 102.6),
+        make_bar(300, 102.6, 102.8, 101.9, 102.0),
+        make_bar(600, 102.0, 102.2, 101.3, 101.4),
+        make_bar(900, 101.4, 101.6, 100.7, 100.8),
+        make_bar(1200, 101.0, 101.1, 100.3, 100.4),
+        make_bar(1500, 100.7, 100.8, 100.0, 100.1),
+        make_bar(1800, 100.4, 100.5, 99.8, 99.9),
+        make_bar(2100, 100.0, 100.4, 99.9, 100.3),
+    ]
+    m1 = [
+        make_bar(2340, 100.8, 100.9, 100.6, 100.7),
+        make_bar(2400, 100.7, 100.8, 100.5, 100.6),
+        make_bar(2460, 100.6, 100.7, 100.4, 100.5),
+        make_bar(2520, 100.5, 100.6, 100.3, 100.4),
+        make_bar(2580, 100.2, 100.25, 99.8, 99.7),
+    ]
+    m15 = [make_bar(i * 900, 101 + i * 0.4, 101.5 + i * 0.4, 100.5 + i * 0.4, 101.2 + i * 0.4)
+           for i in range(6)]
+    biases = [{"direction": "bearish"}, {"direction": "bearish"}, {"direction": "bearish"}]
+    snapshot = {"now": now, "symbol": "XAUUSD", "quote": {"bid": 100.4, "ask": 100.5}, "spec": {}}
+
+    candidate = b2._continuation_candidate(snapshot, m15, m5, m1, biases, now, 100.4)
+
+    assert candidate is not None
+    assert candidate["strategy"] == "B · trend continuation"
+    assert candidate["direction"] == "SELL"
+    assert candidate["grade"] in ("A", "A+")
+    assert candidate["targets"][-1] == round(candidate["reference"] - (candidate["stop"] - candidate["reference"]) * 2, 2)
+    assert candidate["created"] <= now
+
+
+def test_analyze_uses_continuation_without_zones(monkeypatch):
+    now = 1000
+    candidate = dict(id="cont", expiry=now + 60,
+                     evidence={"reason": "continuation", "zone": {}, "rejection": {}, "trigger": {}})
+    monkeypatch.setattr(b2, "_continuation_candidate", lambda *_args, **_kwargs: candidate)
+    snapshot = {"now": now, "symbol": "XAUUSD", "quote": {"bid": 100.0, "ask": 100.1},
+                "bars": [], "frames": {}}
+
+    report = b2.analyze(snapshot)
+
+    assert report["candidate"] is candidate
+    assert report["next_step"] == "ENTRY READY"
+
+
 def test_structure_classification_bias():
     # Bullish: last two confirmed highs rise AND last two confirmed lows rise
     # Let's create a series of swings

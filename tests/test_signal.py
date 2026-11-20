@@ -614,6 +614,30 @@ def test_internal_lifecycle_events_stay_in_admin(db, monkeypatch):
     assert len(delivered) == 1 and "TP1" in delivered[0]
 
 
+def test_clear_b_candidate_removes_entry_ready_ui_state():
+    analysis = {"candidate": {"id": "b1"}, "next_step": "ENTRY READY", "reason": "old"}
+    worker.clear_b_candidate(analysis, "Daily entry cap reached (10 signals).")
+    assert analysis["candidate"] is None
+    assert "WAIT" in analysis["next_step"]
+    assert "Daily entry cap" in analysis["reason"]
+
+
+def test_exposure_and_daily_caps():
+    now = config.utc_now()
+    trade = dict(id="active", created=now - 1000, status="FILLED", direction="SELL",
+                 reference=100.0, entry=[100, 101])
+    item = dict(id="new", direction="SELL", entry=[98, 99])
+    quote = dict(bid=99.0, ask=99.1)
+
+    assert worker.exposure_reason(item, [trade], quote, now) is None
+    assert "Exposure cap" in worker.exposure_reason(item, [trade, dict(trade, id="active2")], quote, now)
+    assert "spacing" in worker.exposure_reason(item, [dict(trade, created=now - 60)], quote, now)
+    assert "Opposite-direction" in worker.exposure_reason({**item, "direction": "BUY"}, [trade], quote, now)
+    assert "displacement" in worker.exposure_reason(item, [trade], dict(quote, bid=99.9), now)
+    assert "Daily entry cap" in worker.daily_cap_reason(
+        [dict(id=str(i), created=now, status="FILLED") for i in range(10)], now)
+
+
 def test_send_pending_skips_research_alerts(db, monkeypatch):
     monkeypatch.setenv("VAPID_PRIVATE_KEY_FILE", "unused.pem")
     monkeypatch.setattr(alerts, "webpush", lambda *_args, **_kwargs: pytest.fail("research alert was delivered"))

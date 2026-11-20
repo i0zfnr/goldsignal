@@ -374,6 +374,97 @@ def _candidate(zone, rejection, trigger, snapshot, m15_closed, mtf_aligned=True)
     )
 
 
+def _continuation_grade(direction, biases, pullback, bars, risk, quote):
+    import_index = next((i for i, row in enumerate(bars) if row["time"] == pullback["time"]), -1)
+    prior = bars[max(0, import_index - 4):import_index] if import_index >= 0 else []
+    median_body = _median(_body(row) for row in prior) if prior else 0
+    aligned = sum(row.get("direction") == direction for row in biases)
+    score = 0
+    if aligned >= 2:
+        score += 1
+    if _body(pullback) <= median_body * 0.75 and median_body > 0:
+        score += 1
+    spread = round(quote.get("ask", 0) - quote.get("bid", 0), 2) if quote.get("ask") else 0.30
+    if risk <= 2.50 and spread <= 0.40:
+        score += 1
+    return {4: "A+", 3: "A"}.get(score + 1, "B+")
+
+
+def _continuation_candidate(snapshot, m15, m5, m1, biases, now, price):
+    sides = {"bullish": "BUY", "bearish": "SELL"}
+    normalized = [{"direction": sides.get(row.get("direction"))} for row in biases]
+    direction = normalized[-1].get("direction")
+    if direction not in sides.values() or len(m5) < 8 or len(m1) < 5:
+        return None
+    sign = 1 if direction == "BUY" else -1
+    pullback = None
+    for index in range(len(m5) - 1, max(2, len(m5) - 13), -1):
+        bar = m5[index]
+        if bar["time"] + 300 > now:
+            continue
+        counter = bar["close"] < bar["open"] if direction == "BUY" else bar["close"] > bar["open"]
+        prior = m5[max(0, index - 3):index]
+        impulse = any(sign * (row["close"] - row["open"]) > 0 for row in prior)
+        if counter and impulse:
+            pullback = bar
+            break
+    if pullback is None:
+        return None
+    trigger = _confirmation(m1, {"time": pullback["time"] + 300,
+                                 "high": pullback["high"], "low": pullback["low"]}, now, direction)
+    if not trigger:
+        return None
+    ref = trigger["close"]
+    buffer = PARAMS["stop_buffer"]
+    if direction == "SELL":
+        stop = round(max(pullback["high"], trigger["bar"]["high"]) + buffer, 2)
+        risk = round(stop - ref, 2)
+        if risk <= 0.50:
+            risk = 2.0
+            stop = round(ref + risk, 2)
+        band_high = round(min(stop - 0.20, max(ref + 0.80, ref + risk * 0.25)), 2)
+        band_low = round(ref - 0.60, 2)
+    else:
+        stop = round(min(pullback["low"], trigger["bar"]["low"]) - buffer, 2)
+        risk = round(ref - stop, 2)
+        if risk <= 0.50:
+            risk = 2.0
+            stop = round(ref - risk, 2)
+        band_low = round(max(stop + 0.20, min(ref - 0.80, ref - risk * 0.25)), 2)
+        band_high = round(ref + 0.60, 2)
+    entry = sorted([band_low, band_high])
+    if entry[1] - entry[0] > 4.0 or entry[0] <= stop < entry[1]:
+        return None
+    targets = [round(ref + sign * risk * multiple, 2) for multiple in PARAMS["targets"]]
+    quote = snapshot.get("quote") or {}
+    grade = _continuation_grade(direction, normalized, pullback, m5, risk, quote)
+    expiry = min(trigger["time"] + PARAMS["entry_window"], now + PARAMS["entry_window"])
+    zone = dict(id=f"trend_{direction}_{trigger['time']}", direction=direction,
+                top=pullback["high"], bottom=pullback["low"], created=pullback["time"] + 300,
+                power=9 if grade == "A+" else 8, confidence="HIGH", source=pullback,
+                swing=dict(price=pullback["low"] if direction == "BUY" else pullback["high"],
+                           time=pullback["time"], confirmed=pullback["time"] + 300),
+                broken_at=trigger["close"], invalidated=None, mitigated=None, expired=expiry)
+    rejection = dict(time=pullback["time"] + 300, bar_time=pullback["time"], high=pullback["high"],
+                     low=pullback["low"], close=pullback["close"])
+    return dict(
+        id=f"b2_cont_{direction}_{trigger['time']}", symbol=snapshot.get("symbol", SYMBOL),
+        strategy="B · trend continuation", strategy_version=PARAMS["version"], direction=direction,
+        grade=grade, reference=ref, entry=entry, initial_stop=stop, stop=stop, targets=targets,
+        max_spread=min(PARAMS["max_spread"], max(0.40, risk * 0.2)), hold_seconds=PARAMS["hold_seconds"],
+        created=trigger["time"], expiry=expiry, hits=0, exits=[], status="PENDING", fill=None,
+        result_per_lot=0 if snapshot.get("spec") else None, costs=snapshot.get("spec"),
+        evidence=dict(grade=f"{grade} · Trend continuation", entry_grade=grade,
+                      reason=f"[{grade} SETUP] {'Bullish' if direction == 'BUY' else 'Bearish'} continuation: "
+                             f"M5 pullback at {pullback['low']:.2f}–{pullback['high']:.2f} with renewed M1 momentum.",
+                      zone=zone, watch_zone=[zone["bottom"], zone["top"]], rejection=rejection,
+                      trigger=trigger["bar"], candle=trigger["bar"],
+                      swing={"low": zone["swing"]["price"], "high": zone["swing"]["price"]},
+                      trend_closes={"15": [row["close"] for row in m15[-4:]]},
+                      pattern=compare_pattern(m15, sign)),
+    )
+
+
 def analyze(snapshot, mtf="M15"):
     now = snapshot["now"]
     quote = snapshot.get("quote") or {}
@@ -427,6 +518,16 @@ def analyze(snapshot, mtf="M15"):
         candidate=None, rejection=None, trigger=None, zone=None,
     )
     if not live_zones:
+        continuation = _continuation_candidate(snapshot, m15, m5, m1,
+                                               [h1_bias, m30_bias, primary_bias], now, price)
+        if continuation:
+            report["candidate"] = continuation
+            report["zone"] = continuation["evidence"]["zone"]
+            report["rejection"] = continuation["evidence"]["rejection"]
+            report["trigger"] = continuation["evidence"]["trigger"]
+            report["next_step"] = "ENTRY READY"
+            report["reason"] = continuation["evidence"]["reason"]
+            return report
         report["next_step"] = "WATCH BUY" if primary_bias.get("direction") == "bullish" else (
             "WATCH SELL" if primary_bias.get("direction") == "bearish" else f"WAITING FOR {mtf} DIRECTION"
         )
@@ -454,6 +555,15 @@ def analyze(snapshot, mtf="M15"):
                         break
         if candidate_found:
             break
+
+    if not candidate_found:
+        continuation = _continuation_candidate(snapshot, m15, m5, m1,
+                                               [h1_bias, m30_bias, primary_bias], now, price)
+        if continuation:
+            candidate_found = continuation
+            target_zone = continuation["evidence"]["zone"]
+            report["rejection"] = continuation["evidence"]["rejection"]
+            report["trigger"] = continuation["evidence"]["trigger"]
 
     if candidate_found:
         report["zone"] = target_zone

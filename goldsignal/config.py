@@ -42,6 +42,10 @@ SESSION_CONFIDENCE_FILTER = os.getenv("SESSION_CONFIDENCE_FILTER", "1") == "1"
 SESSION_MIN_GRADE = os.getenv("SESSION_MIN_GRADE", "A")
 SESSION_MIN_EXPECTANCY = float(os.getenv("SESSION_MIN_EXPECTANCY", "60"))
 DAILY_SETUP = os.getenv("DAILY_SETUP", "1") == "1"
+MAX_ENTRIES_PER_DAY = max(1, int(os.getenv("MAX_ENTRIES_PER_DAY", "10")))
+MAX_ACTIVE_SIGNALS = max(1, int(os.getenv("MAX_ACTIVE_SIGNALS", "2")))
+SIGNAL_SPACING_MIN = max(0, int(os.getenv("SIGNAL_SPACING_MIN", "15")))
+SIGNAL_DISPLACEMENT = max(0.0, float(os.getenv("SIGNAL_DISPLACEMENT", "0.8")))
 AI_BEST_EFFORT = os.getenv("AI_BEST_EFFORT", "1") == "1"
 STRATEGY_B_VERSION = os.getenv("STRATEGY_B_VERSION", "katana_v1")
 STRATEGY_B_MTF = os.getenv("STRATEGY_B_MTF", "M15")
