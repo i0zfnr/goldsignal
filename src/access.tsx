@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
 import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
@@ -204,17 +204,162 @@ function shortReason(value: string | null) {
   return value.length > 34 ? `${value.slice(0, 33)}…` : value;
 }
 
-function CrewCard({ row }: { row: WorkerRow }) {
+function CyberAvatar({ name, tone }: { name: string; tone: string }) {
+  const isLive = tone === "live";
+
+  if (name === "kuro") {
+    return (
+      <div className={`cyber-avatar avatar-kuro ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="kuro-metal" cx="35%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#475569" />
+              <stop offset="60%" stopColor="#1e293b" />
+              <stop offset="100%" stopColor="#090d16" />
+            </radialGradient>
+            <linearGradient id="kuro-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="100%" stopColor="#0284c7" />
+            </linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="30" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" className="avatar-radar" />
+          <polygon points="32,6 54,18 54,46 32,58 10,46 10,18" fill="url(#kuro-metal)" stroke="#94a3b8" strokeWidth="1.5" />
+          <rect x="18" y="26" width="28" height="10" rx="3" fill="#020617" stroke="#38bdf8" strokeWidth="1" />
+          <line x1="20" y1="31" x2="44" y2="31" stroke="url(#kuro-cyan)" strokeWidth="2.5" strokeLinecap="round" className="avatar-scan-bar" />
+          <circle cx="32" cy="31" r="2.5" fill="#ffffff" />
+          <circle cx="32" cy="49" r="2.5" fill="#38bdf8" className={isLive ? "pulse-dot" : ""} />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "kaze") {
+    return (
+      <div className={`cyber-avatar avatar-kaze ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="kaze-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#27272a" />
+              <stop offset="70%" stopColor="#18181b" />
+              <stop offset="100%" stopColor="#09090b" />
+            </linearGradient>
+            <linearGradient id="kaze-gold" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fbbf24" />
+              <stop offset="100%" stopColor="#f59e0b" />
+            </linearGradient>
+          </defs>
+          <path d="M12 20 Q32 8 52 20 L56 42 Q32 58 8 42 Z" fill="url(#kaze-metal)" stroke="#f59e0b" strokeWidth="1.5" />
+          <path d="M6 24 L14 26 L12 36 Z" fill="#f59e0b" opacity="0.8" />
+          <path d="M58 24 L50 26 L52 36 Z" fill="#f59e0b" opacity="0.8" />
+          <path d="M16 26 Q32 20 48 26 L46 36 Q32 30 18 36 Z" fill="#09090b" stroke="#f59e0b" strokeWidth="1" />
+          <circle cx="25" cy="30" r="3" fill="url(#kaze-gold)" className={isLive ? "avatar-eye-pulse" : ""} />
+          <circle cx="39" cy="30" r="3" fill="url(#kaze-gold)" className={isLive ? "avatar-eye-pulse" : ""} />
+          <line x1="26" y1="44" x2="26" y2="48" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="30" y1="42" x2="30" y2="50" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="34" y1="42" x2="34" y2="50" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="38" y1="44" x2="38" y2="48" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "mizu") {
+    return (
+      <div className={`cyber-avatar avatar-mizu ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="mizu-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#1e3a8a" />
+              <stop offset="60%" stopColor="#0f172a" />
+              <stop offset="100%" stopColor="#020617" />
+            </linearGradient>
+            <linearGradient id="mizu-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#67e8f9" />
+              <stop offset="100%" stopColor="#38bdf8" />
+            </linearGradient>
+          </defs>
+          <path d="M32 6 L54 14 L50 44 Q32 58 14 44 L10 14 Z" fill="url(#mizu-metal)" stroke="#38bdf8" strokeWidth="1.5" />
+          <polygon points="32,10 40,16 32,22 24,16" fill="#38bdf8" opacity="0.6" />
+          <path d="M18 28 L46 28 L42 40 L22 40 Z" fill="#020617" stroke="#38bdf8" strokeWidth="1" />
+          <rect x="23" y="32" width="6" height="4" fill="url(#mizu-cyan)" className={isLive ? "avatar-eye-pulse" : ""} />
+          <rect x="35" y="32" width="6" height="4" fill="url(#mizu-cyan)" className={isLive ? "avatar-eye-pulse" : ""} />
+          <line x1="28" y1="48" x2="36" y2="48" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "nanao") {
+    return (
+      <div className={`cyber-avatar avatar-nanao ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="nanao-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#064e3b" />
+              <stop offset="60%" stopColor="#022c22" />
+              <stop offset="100%" stopColor="#020617" />
+            </linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="24" fill="url(#nanao-metal)" stroke="#10b981" strokeWidth="1.5" />
+          <path d="M18 18 L24 24 M46 18 L40 24 M32 10 L32 18" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" opacity="0.75" />
+          <circle cx="18" cy="18" r="2" fill="#34d399" />
+          <circle cx="46" cy="18" r="2" fill="#34d399" />
+          <circle cx="32" cy="10" r="2" fill="#34d399" />
+          <path d="M18 28 Q32 24 46 28 L44 38 Q32 34 20 38 Z" fill="#020617" stroke="#10b981" strokeWidth="1" />
+          <circle cx="26" cy="32" r="2.5" fill="#34d399" className={isLive ? "avatar-eye-pulse" : ""} />
+          <circle cx="32" cy="32" r="2.5" fill="#34d399" className={isLive ? "avatar-eye-pulse" : ""} />
+          <circle cx="38" cy="32" r="2.5" fill="#34d399" className={isLive ? "avatar-eye-pulse" : ""} />
+          <path d="M26 46 Q32 50 38 46" fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+
+  // hikari
+  return (
+    <div className={`cyber-avatar avatar-hikari ${tone}`}>
+      <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="hikari-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#581c87" />
+            <stop offset="60%" stopColor="#3b0764" />
+            <stop offset="100%" stopColor="#0f051d" />
+          </linearGradient>
+          <linearGradient id="hikari-laser" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#f472b6" />
+            <stop offset="50%" stopColor="#c084fc" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+        <polygon points="4,20 16,28 12,40" fill="#a855f7" opacity="0.8" />
+        <polygon points="60,20 48,28 52,40" fill="#a855f7" opacity="0.8" />
+        <path d="M16 16 L48 16 L52 42 Q32 58 12 42 Z" fill="url(#hikari-metal)" stroke="#a855f7" strokeWidth="1.5" />
+        <polygon points="12,30 52,30 46,36 18,36" fill="#0f051d" stroke="#c084fc" strokeWidth="1" />
+        <line x1="14" y1="33" x2="50" y2="33" stroke="url(#hikari-laser)" strokeWidth="2.5" strokeLinecap="round" className={isLive ? "avatar-scan-bar" : ""} />
+        <polygon points="32,44 35,49 29,49" fill="#c084fc" />
+      </svg>
+    </div>
+  );
+}
+
+function CrewCard({ row, isCore = false }: { row: WorkerRow; isCore?: boolean }) {
   const tone = workerClass(row.status);
-  return <article className={`crew-card crew-${tone}`} title={row.reason ?? row.role}>
-    <span className="crew-bubble">{shortReason(row.reason) ?? row.status}</span>
-    <div className={`crew-face face-${row.name}`} aria-hidden="true"><i /><i /><b /></div>
-    <strong>{row.label}</strong>
-    <small>{row.role}</small>
-    <span className={`crew-chip chip-${tone}`}>
-      {row.status}{row.age_seconds != null ? ` · ${row.age_seconds}s` : ""}
-    </span>
-  </article>;
+  return (
+    <article className={`crew-card crew-${tone} ${isCore ? "crew-core" : ""}`} title={row.reason ?? row.role}>
+      <span className="crew-bubble">{shortReason(row.reason) ?? row.status}</span>
+      <div className="crew-avatar-frame">
+        <CyberAvatar name={row.name} tone={tone} />
+      </div>
+      <div className="crew-info">
+        <strong>{row.label}</strong>
+        <small>{row.role}</small>
+      </div>
+      <span className={`crew-chip chip-${tone}`}>
+        <span className={`chip-dot dot-${tone}`} />
+        {row.status}{row.age_seconds != null ? ` · ${row.age_seconds}s` : ""}
+      </span>
+    </article>
+  );
 }
 
 function WorkerStatus() {
@@ -258,7 +403,7 @@ function WorkerStatus() {
   }
 
   const age = (value: number | null) => value == null ? "–" : `${value}s`;
-  return <section className="panel access-panel" aria-labelledby="worker-status-title">
+  return <section className="panel access-panel worker-status-panel" aria-labelledby="worker-status-title">
     <PanelHeading title="Worker pipeline" id="worker-status-title" as="h3">
       <Badge tone={report?.error ? "negative" : report && (report.heartbeat_age ?? 99) <= 30 ? "positive" : "neutral"}>
         {report?.error ? "Error" : report ? `Heartbeat ${age(report.heartbeat_age)}` : "Loading"}
@@ -267,29 +412,65 @@ function WorkerStatus() {
     {error && <p className="warn" role="alert">{error}</p>}
     {!report && !error && <LoadingState>Loading worker status…</LoadingState>}
     {report && <>
-      <dl className="report-stats">
-        <div><dt>Feed</dt><dd>{report.symbol} · {report.mode} · rev {report.revision}</dd></div>
-        <div><dt>Quote age</dt><dd>{age(report.quote_age)}</dd></div>
-        <div><dt>Spec age</dt><dd>{age(report.spec_age)}</dd></div>
-        <div><dt>Market</dt><dd>{report.closed ? "Closed" : "Open"}</dd></div>
-      </dl>
+      {/* 1. Master Kuro Core Hub */}
+      <div className="kuro-hub-card">
+        <div className="kuro-hub-avatar-area">
+          <CrewCard row={report.kuro} isCore />
+        </div>
+        <div className="kuro-hub-body">
+          <div className="kuro-hub-header">
+            <span className="hub-tag">MASTER ORCHESTRATOR</span>
+            <span className="hub-subhead">Unified MetaTrader 5 Feed & Lane Telemetry</span>
+          </div>
+          <div className="kuro-hud-grid">
+            <div className="kuro-hud-stat">
+              <span className="hud-label">INSTRUMENT</span>
+              <strong className="hud-val">{report.symbol}</strong>
+            </div>
+            <div className="kuro-hud-stat">
+              <span className="hud-label">FEED SOURCE</span>
+              <strong className="hud-val">{report.mode.toUpperCase()}</strong>
+            </div>
+            <div className="kuro-hud-stat">
+              <span className="hud-label">REVISION</span>
+              <strong className="hud-val">#{report.revision}</strong>
+            </div>
+            <div className="kuro-hud-stat">
+              <span className="hud-label">QUOTE AGE</span>
+              <strong className={`hud-val ${(report.quote_age ?? 99) <= 2 ? "good" : "warn"}`}>{age(report.quote_age)}</strong>
+            </div>
+            <div className="kuro-hud-stat">
+              <span className="hud-label">SPEC CLOCK</span>
+              <strong className="hud-val">{age(report.spec_age)}</strong>
+            </div>
+            <div className="kuro-hud-stat">
+              <span className="hud-label">MARKET STATE</span>
+              <strong className={`hud-val ${report.closed ? "warn" : "good"}`}>{report.closed ? "CLOSED" : "OPEN"}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="crew-head">
-        <strong>Crew</strong>
-        <span>{report.lanes.flatMap(lane => lane.stages).concat(report.kuro)
-          .filter(row => workerClass(row.status) === "live").length} live · {report.lanes.length} lanes</span>
+        <strong>Execution Pipeline</strong>
+        <span className="pipeline-count-badge">
+          {report.lanes.flatMap(lane => lane.stages).concat(report.kuro)
+            .filter(row => workerClass(row.status) === "live").length} live · {report.lanes.length} strategy lanes
+        </span>
       </div>
-      <div className="crew-grid crew-kuro">
-        <CrewCard row={report.kuro} />
-      </div>
+
       {report.lanes.map(lane => {
         const active = lane.stages.some(row => workerClass(row.status) === "live");
-        return <section className="crew-lane" key={lane.id}>
+        return <section className="crew-lane-box" key={lane.id}>
           <div className="crew-lane-head">
-            <strong>{lane.label}</strong>
-            <Badge tone={active ? "positive" : "neutral"}>{active ? "Active" : "Waiting"}</Badge>
+            <div className="lane-title-group">
+              <span className="lane-seq-pill">LANE {lane.id}</span>
+              <strong>{lane.label}</strong>
+            </div>
+            <Badge tone={active ? "positive" : "neutral"}>{active ? "Active Flow" : "Standby"}</Badge>
           </div>
           {lane.id === "B" && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, margin: "6px 0 12px", padding: "8px 12px", background: "var(--raised)", border: "1px solid var(--line)", borderRadius: 8 }}>
+            <div className="lane-config-bar">
               <div>
                 <strong className="small" style={{ display: "block" }}>Kaze Strategy B Direction Filter:</strong>
                 <span className="small muted">Configure whether Kaze evaluates M15 intraday swings or H1 macro structure.</span>
@@ -316,12 +497,32 @@ function WorkerStatus() {
               </div>
             </div>
           )}
-          <div className="crew-grid">
-            {lane.stages.map(row => <CrewCard row={row} key={row.name} />)}
+          <div className="pipeline-flow-track">
+            {lane.stages.map((row, idx) => {
+              const tone = workerClass(row.status);
+              const isFlowing = tone === "live";
+              return (
+                <Fragment key={row.name}>
+                  <div className="pipeline-node">
+                    <span className="pipeline-step-idx">STAGE 0{idx + 1}</span>
+                    <CrewCard row={row} />
+                  </div>
+                  {idx < lane.stages.length - 1 && (
+                    <div className={`pipeline-bus ${isFlowing ? "flowing" : ""}`} aria-hidden="true">
+                      <div className="bus-wire" />
+                      <div className="bus-particle" />
+                      <div className="bus-arrow">▶</div>
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
         </section>;
       })}
-      <p className="small muted">Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C trades Asian range liquidity sweeps.</p>
+      <p className="small muted" style={{ marginTop: 14 }}>
+        Three strategy lanes share one feed. Each lane has its own Kaze (analysis), Mizu (risk), Nanao (AI confirmation) and Hikari (delivery). No model can override a failed gate. Strategy C trades Asian range liquidity sweeps.
+      </p>
     </>}
   </section>;
 }

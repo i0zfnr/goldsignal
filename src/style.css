@@ -421,111 +421,214 @@ footer a { color: inherit; }
                       0 0 22px -6px color-mix(in srgb, var(--buy) 70%, transparent); }
 }
 
-.worker-kuro { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.worker-kuro .worker-node { min-width: 110px; }
-.worker-kuro p { margin: 0; }
-.worker-lane { padding: 10px 0 6px; border-top: 1px solid var(--line); }
-.worker-lane:first-of-type { border-top: 0; }
-.worker-lane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.worker-lane-head strong { font-size: .8125rem; font-weight: 600; letter-spacing: .02em; }
-.worker-lane .worker-flow { padding: 6px 0 4px; }
-.worker-lane p { margin: 0 0 4px; }
+/* --- High-Tech Cybernetic Worker & Pipeline Architecture --- */
+.worker-status-panel { padding: clamp(16px, 2.5vw, 24px) !important; }
 
-.crew-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-  margin: 4px 0 12px; font-size: .8125rem; color: var(--muted); }
-.crew-head strong { font-size: 1.125rem; color: var(--text); letter-spacing: .01em; }
-.crew-kuro { margin-bottom: 14px; }
-.crew-lane { padding: 12px 0 4px; border-top: 1px solid var(--line); }
-.crew-lane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
-.crew-lane-head strong { font-size: .8125rem; font-weight: 600; letter-spacing: .02em; }
-.crew-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 18px 12px; }
-.crew-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  margin-top: 10px; padding: 16px 8px 10px; border: 1px solid var(--line); border-radius: 14px;
-  background: var(--panel); text-align: center; }
-.crew-card strong { font-size: .8125rem; font-weight: 600; }
-.crew-card > small { font-size: .625rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
-.crew-bubble { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); max-width: 94%;
-  padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
-  color: var(--text); font-size: .625rem; line-height: 1.3; white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; box-shadow: 0 4px 12px -8px rgba(0,0,0,.5); }
-.crew-face { position: relative; width: 56px; height: 56px; margin: 4px 0 6px; border-radius: 50%;
-  background: radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--crew) 55%, #fff), var(--crew) 62%);
-  border: 2px solid color-mix(in srgb, var(--crew) 70%, #000);
-  box-shadow: inset 0 -6px 10px -6px rgba(0,0,0,.35); }
-.crew-face i { position: absolute; top: 20px; width: 7px; height: 9px; border-radius: 4px; background: #14181c; }
-.crew-face i:first-of-type { left: 15px; }
-.crew-face i:last-of-type { right: 15px; }
-.crew-face b { position: absolute; left: 50%; bottom: 13px; width: 14px; height: 7px;
-  transform: translateX(-50%); border-bottom: 3px solid #14181c; border-radius: 0 0 10px 10px; }
-.face-kaze { --crew: #e08a3c; }
-.face-mizu { --crew: #3f7fd6; }
-.face-nanao { --crew: #17a398; }
-.face-hikari { --crew: #8a63d2; }
-.face-kuro { --crew: #6b7280; }
-.crew-chip { margin-top: 2px; padding: 2px 7px; border-radius: 999px; font-size: .625rem;
-  text-transform: uppercase; letter-spacing: .06em; background: var(--selected); color: var(--muted); }
-.chip-live { background: color-mix(in srgb, var(--buy) 14%, transparent); color: var(--buy); }
-.chip-warn { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
-.chip-error { background: color-mix(in srgb, var(--sell) 14%, transparent); color: var(--sell); }
-.crew-live { border-color: color-mix(in srgb, var(--buy) 45%, var(--line)); }
-.crew-error { border-color: color-mix(in srgb, var(--sell) 55%, var(--line)); }
-.crew-warn { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
-.crew-idle { opacity: .72; }
+/* 1. Master Kuro Core Hub */
+.kuro-hub-card {
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 16px;
+  padding: 16px; margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.85) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  position: relative; overflow: hidden;
+}
+.kuro-hub-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+}
+.kuro-hub-avatar-area { flex: 0 0 auto; display: flex; align-items: center; }
+.kuro-hub-body { flex: 1 1 320px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.kuro-hub-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hub-tag {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  font-size: .625rem; font-weight: 800; letter-spacing: .08em;
+  background: rgba(56, 189, 248, 0.16); border: 1px solid rgba(56, 189, 248, 0.5); color: #38bdf8;
+}
+.hub-subhead { font-size: .8125rem; color: var(--muted); font-weight: 500; }
+.kuro-hud-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px;
+}
+.kuro-hud-stat {
+  padding: 8px 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px; font-variant-numeric: tabular-nums;
+}
+.hud-label { display: block; font-size: .625rem; font-weight: 700; color: var(--muted); letter-spacing: .06em; }
+.hud-val { display: block; font-size: .9375rem; font-weight: 750; color: #ffffff; margin-top: 2px; }
+
+/* 2. Pipeline Execution Track */
+.crew-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 18px 0 12px; font-size: .875rem;
+}
+.crew-head strong { font-size: 1.125rem; font-weight: 700; color: #ffffff; letter-spacing: -.02em; }
+.pipeline-count-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+  border-radius: 999px; font-size: .75rem; font-weight: 600;
+  background: var(--raised); border: 1px solid var(--line); color: var(--muted);
+}
+.crew-lane-box {
+  margin-bottom: 16px; padding: 14px;
+  background: linear-gradient(180deg, rgba(20, 22, 28, 0.8) 0%, rgba(14, 15, 20, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+.crew-lane-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.lane-title-group { display: flex; align-items: center; gap: 8px; }
+.lane-seq-pill {
+  padding: 2px 7px; border-radius: 4px; font-size: .625rem; font-weight: 800; letter-spacing: .06em;
+  background: var(--raised); border: 1px solid var(--line); color: var(--gold);
+}
+.crew-lane-head strong { font-size: .875rem; font-weight: 700; color: #ffffff; }
+
+.lane-config-bar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  margin: 6px 0 14px; padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px;
+}
+
+/* 3. Pipeline Flow & Bus Connectors */
+.pipeline-flow-track {
+  display: flex; align-items: center; gap: 0;
+  overflow-x: auto; padding: 8px 4px 14px;
+  scrollbar-width: thin;
+}
+.pipeline-node { display: flex; flex-direction: column; align-items: center; flex: 1 0 130px; min-width: 120px; }
+.pipeline-step-idx {
+  font-size: .625rem; font-weight: 800; letter-spacing: .08em;
+  color: var(--muted); margin-bottom: 4px;
+}
+
+.pipeline-bus {
+  position: relative; flex: 0 0 36px; height: 16px; display: flex; align-items: center; justify-content: center;
+  margin-inline: 2px;
+}
+.bus-wire { width: 100%; height: 2px; background: rgba(255, 255, 255, 0.12); border-radius: 1px; }
+.bus-arrow {
+  position: absolute; font-size: 8px; color: var(--muted);
+  right: -2px; line-height: 1; opacity: 0.6;
+}
+.bus-particle {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gold); opacity: 0;
+}
+.pipeline-bus.flowing .bus-wire { background: color-mix(in srgb, var(--buy) 50%, rgba(255, 255, 255, 0.15)); }
+.pipeline-bus.flowing .bus-arrow { color: var(--buy); opacity: 1; }
+.pipeline-bus.flowing .bus-particle {
+  background: var(--buy); box-shadow: 0 0 8px var(--buy);
+  animation: bus-particle-flow 1.6s ease-in-out infinite;
+}
+@keyframes bus-particle-flow {
+  0% { transform: translateX(-16px); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateX(16px); opacity: 0; }
+}
+
+/* 4. Cybernetic Crew Cards */
+.crew-card {
+  position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 16px 8px 10px; border-radius: 14px; text-align: center;
+  background: linear-gradient(180deg, rgba(28, 32, 42, 0.8) 0%, rgba(17, 19, 25, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.crew-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.crew-card.crew-core {
+  min-width: 140px; padding-block: 14px 10px;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.crew-bubble {
+  position: absolute; top: -11px; left: 50%; transform: translateX(-50%); max-width: 92%;
+  padding: 2px 8px; border-radius: 999px;
+  background: #0f1219; border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff; font-size: .625rem; font-weight: 600; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+.crew-info { margin-top: 2px; }
+.crew-card strong { display: block; font-size: .875rem; font-weight: 750; color: #ffffff; letter-spacing: -.01em; }
+.crew-card small { display: block; font-size: .625rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+
+.crew-chip {
+  margin-top: 3px; display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px; font-size: .625rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--muted);
+}
+.chip-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* Status Tone Themes */
+.crew-live {
+  border-color: rgba(16, 185, 129, 0.55);
+  box-shadow: 0 0 22px -6px rgba(16, 185, 129, 0.45);
+}
+.crew-live .crew-bubble { border-color: rgba(16, 185, 129, 0.55); color: #34d399; }
+.crew-live .chip-live {
+  background: rgba(16, 185, 129, 0.16); border-color: rgba(16, 185, 129, 0.5); color: #34d399;
+}
+.crew-live .chip-dot { box-shadow: 0 0 6px #10b981; }
+
+.crew-warn {
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 18px -6px rgba(245, 158, 11, 0.35);
+}
+.crew-warn .chip-warn {
+  background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.5); color: #fbbf24;
+}
+
+.crew-error {
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 20px -6px rgba(239, 68, 68, 0.4);
+}
+.crew-error .chip-error {
+  background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.5); color: #f87171;
+}
+
+/* 5. Cyber Avatars SVGs & Animations */
+.crew-avatar-frame { position: relative; width: 62px; height: 62px; margin: 4px 0 6px; }
+.cyber-avatar { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+.cyber-svg { width: 100%; height: 100%; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .crew-live .crew-face { animation: crew-bob 3s ease-in-out infinite; }
-  .crew-live .crew-face i { animation: crew-blink 5s ease-in-out infinite; }
-  .crew-live .crew-bubble { animation: crew-bubble 3s ease-in-out infinite; }
+  .crew-live .cyber-svg { animation: avatar-live-bob 2.8s ease-in-out infinite; }
+  .crew-live.crew-card { animation: card-live-breathe 3.6s ease-in-out infinite; }
+  .avatar-radar { animation: radar-spin 8s linear infinite; transform-origin: 32px 32px; }
+  .crew-live .avatar-eye-pulse { animation: eye-flare 1.8s ease-in-out infinite alternate; }
+  .crew-live .pulse-dot { animation: dot-blip 1.2s ease-in-out infinite; }
+  .crew-live .avatar-scan-bar { animation: scan-oscillate 2.4s ease-in-out infinite alternate; }
 }
-@keyframes crew-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes crew-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.15); } }
-@keyframes crew-bubble { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -2px); } }
 
-/* vivid crew skin */
-.face-kaze { --crew: #f59e0b; }
-.face-mizu { --crew: #3b82f6; }
-.face-nanao { --crew: #10b981; }
-.face-hikari { --crew: #a855f7; }
-.face-kuro { --crew: #8b9bb4; }
-.crew-face { width: 60px; height: 60px; z-index: 0;
-  background: radial-gradient(circle at 32% 24%, rgba(255,255,255,.9) 0 10%, rgba(255,255,255,0) 44%),
-              linear-gradient(160deg, color-mix(in srgb, var(--crew) 78%, #fff), var(--crew) 58%,
-                              color-mix(in srgb, var(--crew) 68%, #000));
-  border-color: color-mix(in srgb, var(--crew) 72%, #000);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--crew) 30%, transparent),
-              0 14px 22px -14px color-mix(in srgb, var(--crew) 85%, transparent); }
-.crew-face::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; z-index: -1;
-  background: conic-gradient(from 0deg, transparent 0 52%,
-              color-mix(in srgb, var(--crew) 85%, transparent) 70%, transparent 86%);
-  opacity: .35; }
-.crew-card { background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 92%, #fff), var(--panel)); }
-.crew-card:hover .crew-face { filter: saturate(1.15) brightness(1.05); }
-.crew-idle { opacity: .9; }
-.crew-idle .crew-face { filter: saturate(.55); }
-.crew-idle .crew-face::after { opacity: .12; }
-.crew-error .crew-face { filter: saturate(1.2); }
-.crew-error .crew-face::after { opacity: .7; }
-
-@media (prefers-reduced-motion: no-preference) {
-  .crew-face::after { animation: crew-spin 9s linear infinite; }
-  .crew-idle .crew-face { animation: crew-breathe 7s ease-in-out infinite; }
-  .crew-live .crew-face { animation: crew-bob 2.4s ease-in-out infinite,
-                                     crew-glow 2.4s ease-in-out infinite; }
-  .crew-live .crew-face::after { animation: crew-spin 3.2s linear infinite; }
-  .crew-live .crew-bubble { animation: crew-bubble 2.4s ease-in-out infinite; }
+@keyframes avatar-live-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
-@keyframes crew-spin { to { transform: rotate(360deg); } }
-@keyframes crew-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
-@keyframes crew-glow {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--crew) 30%, transparent),
-                         0 10px 18px -14px color-mix(in srgb, var(--crew) 75%, transparent); }
-  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--crew) 45%, transparent),
-                      0 14px 26px -12px color-mix(in srgb, var(--crew) 95%, transparent); }
+@keyframes card-live-breathe {
+  0%, 100% { box-shadow: 0 0 20px -6px rgba(16, 185, 129, 0.35); }
+  50% { box-shadow: 0 0 28px -4px rgba(16, 185, 129, 0.6); }
 }
-.crew-face i { top: 22px; }
-.crew-face i:first-of-type { left: 16px; }
-.crew-face i:last-of-type { right: 16px; }
-.crew-face b { bottom: 14px; }
+@keyframes radar-spin { to { transform: rotate(360deg); } }
+@keyframes eye-flare {
+  0% { opacity: 0.6; filter: brightness(1); }
+  100% { opacity: 1; filter: brightness(1.5) drop-shadow(0 0 6px currentColor); }
+}
+@keyframes dot-blip {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+@keyframes scan-oscillate {
+  0% { transform: translateX(-4px); }
+  100% { transform: translateX(4px); }
+}
 
 .lot-size { max-width: 760px; }
 .lot-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
