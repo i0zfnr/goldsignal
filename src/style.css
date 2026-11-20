@@ -613,7 +613,7 @@ footer a { color: inherit; }
 
 /* 5. Operator avatars — colorful abstract characters with eyes */
 .crew-avatar-frame { position: relative; width: 60px; height: 60px; margin: 4px 0 6px; }
-.operator-badge { display: flex; justify-content: center; }
+.operator-badge { display: flex; justify-content: center; width: 100%; height: 100%; }
 .operator-avatar { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
 .op-shape {
   position: absolute; inset: 0; background: var(--op);
