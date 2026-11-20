@@ -580,7 +580,7 @@ function WorkerStatus() {
           <div className="shinra-division-head">
             <div className="shinra-title-group">
               <span className="division-badge">RESEARCH DESK</span>
-              <strong style={{ color: "#ffffff", fontSize: "0.875rem" }}>Shinra Quant Desk</strong>
+              <strong style={{ fontSize: "0.875rem" }}>Shinra Quant Desk</strong>
               <span className="small muted">· 1,000-candle structural geometry, Fair Value Gaps & probability engine</span>
             </div>
             <Badge tone="accent">Active Matrix</Badge>
