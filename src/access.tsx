@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
-  Activity, AlertTriangle, ArrowUp, BrainCircuit, Check, CheckCircle2, Copy, Cpu,
-  Dices, Download, Edit2, Gauge, Key, LineChart, Megaphone, MessageSquare, Plus,
-  Radio, RefreshCw, RotateCcw, RotateCw, Search, Send, ShieldCheck, Sparkles,
-  Trash2, TrendingUp, UserPlus, Users, Waypoints, Wind, X
+  AlertTriangle, ArrowUp, Check, CheckCircle2, Copy, Download, Edit2,
+  Gauge, Key, MessageSquare, Plus, RefreshCw, RotateCcw, RotateCw,
+  Search, Send, Sparkles, Trash2, UserPlus, Users, X
 } from "lucide-react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
@@ -429,20 +428,6 @@ function shortReason(value: string | null) {
   return value.length > 34 ? `${value.slice(0, 33)}…` : value;
 }
 
-const OPERATOR_ICONS: Record<string, ReactNode> = {
-  kuro: <Radio size={12} />,
-  kaze: <Wind size={12} />,
-  mizu: <ShieldCheck size={12} />,
-  nanao: <BrainCircuit size={12} />,
-  hayate: <Cpu size={12} />,
-  ryu: <Send size={12} />,
-  shinra: <LineChart size={12} />,
-  taka: <TrendingUp size={12} />,
-  ren: <Waypoints size={12} />,
-  kai: <Dices size={12} />,
-  hikari: <Megaphone size={12} />,
-};
-
 const OPERATOR_COLORS: Record<string, string> = {
   kuro: "#38bdf8",
   kaze: "#f5a524",
@@ -458,12 +443,14 @@ const OPERATOR_COLORS: Record<string, string> = {
 };
 
 function OperatorAvatar({ name, tone }: { name: string; tone: string }) {
-  const icon = OPERATOR_ICONS[name] ?? <Activity size={20} />;
   const color = OPERATOR_COLORS[name] ?? "#94a3b8";
   return (
     <div className={`operator-badge tone-${tone}`}>
       <div className="operator-avatar" style={{ "--op": color } as CSSProperties}>
-        <span className="operator-icon">{icon}</span>
+        <svg viewBox="0 0 48 48" className="operator-person" aria-hidden="true">
+          <circle cx="24" cy="17.5" r="7.5" />
+          <path d="M9.5 42c0-8.4 6.6-13.2 14.5-13.2S38.5 33.6 38.5 42Z" />
+        </svg>
         <span className="operator-status-dot" />
       </div>
     </div>
