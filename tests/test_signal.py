@@ -570,6 +570,30 @@ def test_performance_uses_closed_fills_and_myt_periods(db):
         assert (week["signals"], week["wins"], week["losses"], week["pips"]) == (3, 1, 1, -10)
 
 
+def test_research_gate_requires_high_edge_for_strategy_b():
+    low = {"strategy": "B · liquidity scalp", "grade": "B+", "direction": "BUY", "session": "New York"}
+    reason, edge, aligned, grade_ok = worker.research_gate(
+        low, {"shinra": {"edge_score": 35}}, {"regime": "EXPANSION"}, [], 0)
+    assert reason and "35" in reason and "no entry" in reason.lower()
+    assert edge == 35 and grade_ok is False
+
+    high = {"strategy": "B · liquidity scalp", "grade": "A", "direction": "BUY", "session": "Tokyo"}
+    reason, edge, aligned, grade_ok = worker.research_gate(
+        high, {"shinra": {"edge_score": 65}}, {"regime": "NORMAL"}, [], 0)
+    assert reason is None and edge == 65 and grade_ok is True and aligned is True
+
+    legacy = {"strategy": "M5 setup / M1 entry", "grade": None, "direction": "BUY", "session": "New York"}
+    assert worker.research_gate(legacy, {"shinra": {"edge_score": 0}},
+                                {"regime": "EXPANSION"}, [], 0)[0] is None
+
+
+def test_zone_touch_message_is_watch_only():
+    from goldsignal.telegram import format_zone_touch
+
+    message = format_zone_touch("BUY", {"bottom": 100, "top": 101, "power": 8}, 100.5, 0)
+    assert "WATCH ONLY" in message and "DO NOT ENTER" in message
+
+
 def test_performance_counts_partial_tp_immediately(db):
     today = datetime(2026, 11, 19, 1, tzinfo=config.MY).timestamp()
     with store.transaction() as data:

@@ -42,7 +42,8 @@ def test_telegram_message_formatters():
 
     # Zone touch formatting
     ztouch = telegram.format_zone_touch("SELL", zone, 3720.0, 1795100000)
-    assert "PRICE ENTERED ZONE" in ztouch
+    assert "ZONE WATCH ONLY" in ztouch
+    assert "DO NOT ENTER" in ztouch
     assert "SUPPLY ZONE" in ztouch
     assert "3718.28 – 3723.67" in ztouch
 

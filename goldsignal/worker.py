@@ -46,6 +46,25 @@ def ai_unavailable(model):
     return bool(model) and any(text in str(model[1] or "").lower() for text in AI_UNAVAILABLE_TEXT)
 
 
+def research_gate(item, research_res, session_res, bars, now):
+    edge = float((research_res.get("shinra") or {}).get("edge_score") or 0)
+    if not str(item.get("strategy") or "").startswith("B"):
+        return None, edge, True, True
+    grade = str(item.get("grade") or "").upper()
+    grade_ok = GRADE_RANK.get(grade, -1) >= GRADE_RANK.get(SESSION_MIN_GRADE.upper(), 2)
+    aggressive = item.get("session") in AGGRESSIVE_SESSIONS or session_res.get("regime") == "EXPANSION"
+    aligned = True
+    if aggressive:
+        aligned = bool(session_intel(bars, now, item["direction"]).get("aligned", False))
+    if grade_ok and edge >= SESSION_MIN_EXPECTANCY and aligned:
+        return None, edge, aligned, grade_ok
+    reason = (f"Research watch only — no entry. Grade {grade or 'n/a'} "
+              f"(minimum {SESSION_MIN_GRADE}), research edge {edge:g}% "
+              f"({SESSION_MIN_EXPECTANCY:g}% required), flow "
+              f"{'aligned' if aligned else 'against'} {item['direction']}.")
+    return reason, edge, aligned, grade_ok
+
+
 def daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, now):
     today = day_key(now)
     key = f"daily:{today}"
@@ -408,8 +427,8 @@ def process(source, step, cursor, calendar, revision):
                 store.put("alert", touch_key, dict(
                     id=touch_key, profile="shared", signal=None, kind="ZONE_TOUCH", time=now,
                     valid_until=now + 600,
-                    title=f"XAUUSD in {in_z['direction']} Zone ({in_z['bottom']:.2f}–{in_z['top']:.2f})",
-                    body=f"Price ({quote['bid']:.2f}) entered M15 {in_z['direction']} zone. Watching for reversal scalp entry!",
+                    title=f"Zone watch only · XAUUSD {in_z['direction']} ({in_z['bottom']:.2f}–{in_z['top']:.2f})",
+                    body=f"Price ({quote['bid']:.2f}) entered M15 {in_z['direction']} zone. Research watch only — DO NOT ENTER until an entry signal is published.",
                     url="/#signal", delivery="sent", attempts=1,
                 ))
                 dispatch_telegram(format_zone_touch(in_z["direction"], in_z, quote["bid"], now))
@@ -435,31 +454,17 @@ def process(source, step, cursor, calendar, revision):
             lane = "C" if item.get("id", "").startswith("c_") else ("B" if item.get("strategy") else "A")
             item.setdefault("lane", lane)
         if SESSION_CONFIDENCE_FILTER and active_signal is None:
-            min_rank = GRADE_RANK.get(SESSION_MIN_GRADE.upper(), 2)
-            edge = research_res["shinra"].get("edge_score") or 0
-            filtered = []
             for item in pending:
-                if not str(item.get("strategy") or "").startswith("B"):
-                    filtered.append(item)
-                    continue
-                aggressive = item.get("session") in AGGRESSIVE_SESSIONS or session_res.get("regime") == "EXPANSION"
-                if not aggressive:
-                    filtered.append(item)
-                    continue
-                grade_ok = GRADE_RANK.get(str(item.get("grade") or "").upper(), -1) >= min_rank
-                aligned = session_intel(b_snapshot.get("bars", []), snapshot["now"], item["direction"]).get("aligned", False)
-                if grade_ok and edge >= SESSION_MIN_EXPECTANCY and aligned:
-                    filtered.append(item)
-                    continue
-                reason = (f"Held back in {item.get('session') or session_res['regime']}: "
-                          f"grade {item.get('grade') or 'n/a'}, research edge {edge}%, "
-                          f"flow {'aligned' if aligned else 'against'} {item['direction']}.")
-                item["confidence_hold"] = reason
-                if item.get("strategy"):
-                    scalp_scan = reason
-                scan["reason"] = reason
-                filtered.append(item)
-            pending = filtered
+                reason, edge, aligned, grade_ok = research_gate(
+                    item, research_res, session_res, b_snapshot.get("bars", []), snapshot["now"])
+                item["research_edge"] = edge
+                item["research_aligned"] = aligned
+                item["research_grade_ok"] = grade_ok
+                if reason:
+                    item["confidence_hold"] = reason
+                    if item.get("strategy"):
+                        scalp_scan = reason
+                    scan["reason"] = reason
         if demo_account.enabled():
             for item in pending:
                 if item.get("strategy") and not store.get("demo_candidate", item["id"]):
@@ -542,9 +547,12 @@ def process(source, step, cursor, calendar, revision):
                         store.put("alert", hold_key, dict(
                             id=hold_key, profile="shared", signal=key, kind="HOLD", time=now,
                             valid_until=item["expiry"],
-                            title=f"{SYMBOL} {item['direction']} {item.get('grade', '')} setup held",
-                            body=reason, url=f"/?signal={key}#signal", delivery="sent", attempts=1))
-                        dispatch_telegram(f"SETUP HOLD · {SYMBOL} {item['direction']} {item.get('grade', '')}\n{reason}")
+                            title=f"RESEARCH WATCH ONLY · {SYMBOL} {item['direction']} {item.get('grade', '')}",
+                            body=f"{reason} DO NOT ENTER — no trade signal was published.",
+                            url=f"/?signal={key}#signal", delivery="sent", attempts=1))
+                        dispatch_telegram(
+                            f"RESEARCH WATCH ONLY · {SYMBOL} {item['direction']} {item.get('grade', '')}\n"
+                            f"{reason}\nDO NOT ENTER — no trade signal was published.")
             baseline, baseline_reason = gate(item, quote, now)
             if demo_account.enabled() and baseline == "CONFIRM" and not store.get("demo_eligible", key):
                 store.put("demo_eligible", key, dict(observed_at=utc_now(), quote_time=quote["time"]))

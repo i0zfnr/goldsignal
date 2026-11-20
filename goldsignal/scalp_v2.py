@@ -470,7 +470,7 @@ def analyze(snapshot, mtf="M15"):
     if inside_zone:
         report["zone"] = inside_zone
         report["next_step"] = f"PRICE IN {inside_zone['direction']} ZONE"
-        report["reason"] = f"Price is testing M15 {inside_zone['direction']} zone ({inside_zone['bottom']:.2f}–{inside_zone['top']:.2f}). Watching for reversal scalp!"
+        report["reason"] = f"Price is testing M15 {inside_zone['direction']} zone ({inside_zone['bottom']:.2f}–{inside_zone['top']:.2f}). Research watch only — entry requires high-edge confirmation."
         return report
 
     if latest_rejection and now <= latest_rejection["time"] + PARAMS["entry_window"]:
