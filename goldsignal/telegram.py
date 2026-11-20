@@ -58,7 +58,7 @@ def format_entry(signal: dict, now: float) -> str:
     time_str = datetime.fromtimestamp(now, MY).strftime("%d %b, %H:%M:%S")
 
     icon = "🔴" if direction == "SELL" else "🟢"
-    tp_str = " · ".join(f"TP{i+1} <b>{p:.2f}</b>" for i, p in enumerate(targets[:2]))
+    tp_str = " · ".join(f"TP{i+1} <b>{p:.2f}</b>" for i, p in enumerate(targets[:3]))
 
     return (
         f"{icon} <b>GOLDSIGNAL · {symbol}</b>\n"

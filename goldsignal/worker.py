@@ -215,6 +215,7 @@ def process(source, step, cursor, calendar, revision):
         if not account or account.trade_mode != 0 or fingerprint != os.getenv("DEMO_TERMINAL_FINGERPRINT"):
             raise RuntimeError("Demo feed account changed; paper tracking paused")
     now = snapshot["now"]
+    quote = snapshot.get("quote") or {}
     if DEMO:
         calendar = news.refresh(True, now, calendar)
     workers = blank_workers()
@@ -268,7 +269,7 @@ def process(source, step, cursor, calendar, revision):
                          reason=range_scan, at=now)
 
         # Real-time Price in Zone Notification (When price enters any active zone)
-        if b_analysis and b_analysis.get("inside_zone") and quote:
+        if b_analysis and b_analysis.get("inside_zone") and quote.get("bid"):
             in_z = b_analysis["inside_zone"]
             touch_key = f"zone_in:{in_z['id']}:{int(now // 900)}"
             if not store.get("alert", touch_key):

@@ -238,7 +238,7 @@ export function Chart({
     }
   }, [candles]);
 
-  const active = signal?.status === "PENDING" || signal?.status === "FILLED";
+  const active = signal?.status === "PENDING" || signal?.status === "FILLED" || signal?.status === "ENTRY READY";
   const entryLow = active ? signal.entry[0] : undefined;
   const entryHigh = active ? signal.entry[1] : undefined;
   const stop = active ? signal.stop : undefined;
