@@ -32,6 +32,13 @@ export type BZone = {
   swing?: { price: number; time: number; confirmed?: number } | null;
 };
 
+export type PatternResearch = {
+  shinra: { director: string; edge_score: number; status: string; summary: string; candles_analyzed: number };
+  taka: { pattern: string; confidence: string; signal: string | null; level?: number; description?: string };
+  ren: { active_fvgs: any[]; current_fvg: any | null; status: string };
+  kai: { history: number; matches: number; wins?: number; win_rate: number | null; next4_bps: number | null; avg_pips: number | null };
+};
+
 export type BAnalysis = {
   version: string; mtf?: "M15" | "H1"; now: number; price: number;
   h1: BiasReading;
@@ -49,6 +56,7 @@ export type BAnalysis = {
   rejection?: { time: number; high: number; low: number; close: number } | null;
   trigger?: { time: number; close: number; bar: { time: number; open: number; high: number; low: number; close: number } } | null;
   zone?: BZone | null;
+  pattern_research?: PatternResearch | null;
 };
 
 export type Dashboard = {
@@ -63,6 +71,7 @@ export type Dashboard = {
   scan?: { reason: string; closed_at?: number } | null;
   scalp_scan?: string | null;
   b_analysis?: BAnalysis | null;
+  pattern_research?: PatternResearch | null;
   calendar: { restriction: string | null; events: News[]; headlines: News[];
     sources: Record<string, number>; errors: Record<string, string> };
   alerts: { id: string; title: string; body: string; time: number; url: string; delivery: string }[];

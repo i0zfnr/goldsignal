@@ -167,11 +167,34 @@ def test_hayate_and_ryu_workers_telemetry(db):
     state = workers.blank()
     assert state["hayate"]["label"] == "Hayate"
     assert state["ryu"]["label"] == "Ryu"
+    assert state["shinra"]["label"] == "Shinra"
+    assert "taka" in state["division"]
+    assert "ren" in state["division"]
+    assert "kai" in state["division"]
     workers.mark(state, "live", reason="Parallel compute 3 lanes", at=100, name="hayate")
     workers.mark(state, "idle", reason="0 queued", at=100, name="ryu")
+    workers.mark(state, "live", reason="1,000 candles scanned", at=100, name="shinra")
+    workers.mark_division(state, "taka", "live", reason="Wyckoff sweep", at=100)
     snap = workers.snapshot(state, now=105, heartbeat=104)
     assert snap["hayate"]["status"] == "live"
     assert snap["hayate"]["age_seconds"] == 5.0
     assert snap["ryu"]["status"] == "idle"
-    assert snap["ryu"]["label"] == "Ryu"
+    assert snap["shinra"]["label"] == "Shinra"
+    assert len(snap["division"]) == 3
+    taka = next(s for s in snap["division"] if s["name"] == "taka")
+    assert taka["status"] == "live"
+    assert taka["reason"] == "Wyckoff sweep"
+
+
+def test_shinra_pattern_research_engine():
+    from goldsignal import pattern_research
+    bars = [make_bar(i * 900, 100 + i * 0.5, 101 + i * 0.5, 99 + i * 0.5, 100.5 + i * 0.5) for i in range(30)]
+    res = pattern_research.conduct_research(bars, price=115.0, direction="SELL")
+    assert "shinra" in res
+    assert "taka" in res
+    assert "ren" in res
+    assert "kai" in res
+    assert res["shinra"]["director"] == "Shinra"
+    assert "edge_score" in res["shinra"]
+    assert "status" in res["shinra"]
 

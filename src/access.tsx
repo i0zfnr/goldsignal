@@ -409,6 +409,8 @@ type WorkerReport = {
   kuro: WorkerRow;
   hayate?: WorkerRow;
   ryu?: WorkerRow;
+  shinra?: WorkerRow;
+  division?: WorkerRow[];
   lanes: WorkerLane[]; heartbeat_age: number | null; error: string | null; mode: string;
   symbol: string; revision: number; quote_age: number | null; spec_age: number | null;
   closed: boolean; scan?: string | null; scalp_scan?: string | null;
@@ -593,6 +595,100 @@ function CyberAvatar({ name, tone }: { name: string; tone: string }) {
     );
   }
 
+  if (name === "shinra") {
+    return (
+      <div className={`cyber-avatar avatar-shinra ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="shinra-core" cx="40%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#7c3aed" />
+              <stop offset="60%" stopColor="#4c1d95" />
+              <stop offset="100%" stopColor="#0f0728" />
+            </radialGradient>
+            <linearGradient id="shinra-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#e9d5ff" />
+              <stop offset="100%" stopColor="#a855f7" />
+            </linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="30" fill="none" stroke="#a855f7" strokeWidth="1" strokeDasharray="4 2" className="avatar-radar" />
+          <polygon points="32,6 56,20 56,44 32,58 8,44 8,20" fill="url(#shinra-core)" stroke="#c084fc" strokeWidth="1.5" />
+          <circle cx="32" cy="32" r="14" fill="#0f0728" stroke="#a855f7" strokeWidth="1" />
+          <polygon points="32,22 39,32 32,42 25,32" fill="url(#shinra-glow)" className={isLive ? "avatar-eye-pulse" : ""} />
+          <circle cx="32" cy="32" r="3" fill="#ffffff" />
+          <circle cx="32" cy="12" r="2" fill="#c084fc" />
+          <circle cx="32" cy="52" r="2" fill="#c084fc" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "taka") {
+    return (
+      <div className={`cyber-avatar avatar-taka ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="taka-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#78350f" />
+              <stop offset="60%" stopColor="#451a03" />
+              <stop offset="100%" stopColor="#18181b" />
+            </linearGradient>
+          </defs>
+          <polygon points="32,6 56,24 46,56 18,56 8,24" fill="url(#taka-metal)" stroke="#f59e0b" strokeWidth="1.5" />
+          <line x1="12" y1="20" x2="52" y2="20" stroke="#fbbf24" strokeWidth="1" strokeDasharray="2 2" />
+          <line x1="32" y1="10" x2="32" y2="52" stroke="#fbbf24" strokeWidth="1" strokeDasharray="2 2" />
+          <polygon points="20,28 32,36 44,28 32,44" fill="#18181b" stroke="#f59e0b" strokeWidth="1" />
+          <circle cx="26" cy="32" r="2.5" fill="#f59e0b" className={isLive ? "avatar-eye-pulse" : ""} />
+          <circle cx="38" cy="32" r="2.5" fill="#f59e0b" className={isLive ? "avatar-eye-pulse" : ""} />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "ren") {
+    return (
+      <div className={`cyber-avatar avatar-ren ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="ren-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#0e7490" />
+              <stop offset="60%" stopColor="#164e63" />
+              <stop offset="100%" stopColor="#082f49" />
+            </linearGradient>
+          </defs>
+          <polygon points="32,6 54,18 54,46 32,58 10,46 10,18" fill="url(#ren-metal)" stroke="#38bdf8" strokeWidth="1.5" />
+          <rect x="20" y="20" width="24" height="24" rx="4" fill="#082f49" stroke="#67e8f9" strokeWidth="1" />
+          <rect x="24" y="24" width="16" height="5" fill="#38bdf8" opacity="0.8" />
+          <rect x="24" y="35" width="16" height="5" fill="#38bdf8" opacity="0.8" />
+          <line x1="22" y1="32" x2="42" y2="32" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="2 2" className={isLive ? "avatar-scan-bar" : ""} />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "kai") {
+    return (
+      <div className={`cyber-avatar avatar-kai ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="kai-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#065f46" />
+              <stop offset="60%" stopColor="#064e3b" />
+              <stop offset="100%" stopColor="#022c22" />
+            </linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="26" fill="url(#kai-metal)" stroke="#10b981" strokeWidth="1.5" />
+          <circle cx="22" cy="24" r="3" fill="#34d399" />
+          <circle cx="42" cy="24" r="3" fill="#34d399" />
+          <circle cx="32" cy="38" r="4" fill="#6ee7b7" className={isLive ? "avatar-eye-pulse" : ""} />
+          <line x1="22" y1="24" x2="32" y2="38" stroke="#10b981" strokeWidth="1.2" />
+          <line x1="42" y1="24" x2="32" y2="38" stroke="#10b981" strokeWidth="1.2" />
+          <circle cx="32" cy="18" r="2" fill="#34d399" />
+          <line x1="32" y1="18" x2="32" y2="38" stroke="#10b981" strokeWidth="1" strokeDasharray="2 2" />
+        </svg>
+      </div>
+    );
+  }
+
   // hikari
   return (
     <div className={`cyber-avatar avatar-hikari ${tone}`}>
@@ -696,11 +792,12 @@ function WorkerStatus() {
           <CrewCard row={report.kuro} isCore />
           {report.hayate && <CrewCard row={report.hayate} isCore />}
           {report.ryu && <CrewCard row={report.ryu} isCore />}
+          {report.shinra && <CrewCard row={report.shinra} isCore />}
         </div>
         <div className="kuro-hub-body">
           <div className="kuro-hub-header">
-            <span className="hub-tag">CORE SPEED SQUADRON</span>
-            <span className="hub-subhead">Kuro (Feed) · Hayate (Parallel Compute) · Ryu (Zero-Latency Dispatch)</span>
+            <span className="hub-tag">CORE COMMAND SQUADRON</span>
+            <span className="hub-subhead">Kuro (Feed) · Hayate (Parallel Compute) · Ryu (Dispatch) · Shinra (Quantitative)</span>
           </div>
           <div className="kuro-hud-grid">
             <div className="kuro-hud-stat">
@@ -730,6 +827,28 @@ function WorkerStatus() {
           </div>
         </div>
       </div>
+
+      {/* 2. Shinra Quantitative Research Division (Sub-workers & Graph Intelligence) */}
+      {report.division && report.division.length > 0 && (
+        <div className="shinra-division-card">
+          <div className="shinra-division-head">
+            <div className="shinra-title-group">
+              <span className="division-badge">RESEARCH DIVISION</span>
+              <strong style={{ color: "#ffffff", fontSize: "0.875rem" }}>Shinra Quantitative Intelligence</strong>
+              <span className="small muted">· 1,000-candle structural geometry, Fair Value Gaps & probability engine</span>
+            </div>
+            <Badge tone="accent">Active Matrix</Badge>
+          </div>
+          <div className="shinra-staff-track">
+            {report.division.map((staff, idx) => (
+              <div key={staff.name} className="shinra-staff-node">
+                <span className="pipeline-step-idx">RESEARCHER 0{idx + 1}</span>
+                <CrewCard row={staff} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="crew-head">
         <strong>Execution Pipeline</strong>

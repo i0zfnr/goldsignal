@@ -18,6 +18,7 @@ from .diagnostics import record
 from .gemini_budget import GeminiPaused, pause_after_429, reserve
 from .lifecycle import advance
 from .market import MT5, Replay
+from .pattern_research import conduct_research
 from .range_fade import asian_range_candidate
 from .scalp import scalp_candidate
 from .scalp_v2 import analyze as analyze_v2
@@ -25,7 +26,7 @@ from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
 from .telegram import dispatch_telegram, format_entry, format_event, format_headsup, format_zone_touch, ryu_telemetry, send_telegram
-from .workers import blank as blank_workers, mark as mark_worker, mark_lane as mark_lane_worker
+from .workers import blank as blank_workers, mark as mark_worker, mark_division, mark_lane as mark_lane_worker
 from . import demo_account
 
 log = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ DEMO = MODE == "demo"
 GEMINI_RETRY_DELAYS = (3, 8)
 ENTRY_LIMIT_PER_HOUR = 2
 ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
-hayate_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="hayate-compute")
+hayate_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="hayate-compute")
 
 
 def failure_message(exc):
@@ -281,6 +282,7 @@ def process(source, step, cursor, calendar, revision):
         fut_a = hayate_executor.submit(compute_lane_a)
         fut_b = hayate_executor.submit(compute_lane_b)
         fut_c = hayate_executor.submit(compute_lane_c)
+        fut_shinra = hayate_executor.submit(conduct_research, b_snapshot.get("bars", []), quote.get("bid", 0.0), "SELL")
 
         candidate, scan = fut_a.result()
         snapshot["scan"] = scan
@@ -299,7 +301,18 @@ def process(source, step, cursor, calendar, revision):
             b_analysis = None
 
         range_cand, range_scan = fut_c.result()
+        research_res = fut_shinra.result()
+        shinra_data = research_res["shinra"]
+        taka_data = research_res["taka"]
+        ren_data = research_res["ren"]
+        kai_data = research_res["kai"]
+
         hayate_ms = round((time.perf_counter() - hayate_start) * 1000, 1)
+
+        mark_worker(workers, "live", reason=f"{shinra_data['candles_analyzed']} candles · {shinra_data['edge_score']}% Expectancy", at=now, name="shinra")
+        mark_division(workers, "taka", "live" if taka_data.get("signal") in ("BUY", "SELL") else "idle", reason=f"{taka_data['pattern']} ({taka_data.get('signal', 'NEUT')})", at=now)
+        mark_division(workers, "ren", "live" if ren_data.get("current_fvg") else "idle", reason=ren_data["status"], at=now)
+        mark_division(workers, "kai", "live" if kai_data.get("matches") else "idle", reason=f"K={kai_data.get('matches', 0)} matches · Win {kai_data.get('win_rate', 0)}%", at=now)
 
         mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
                          reason=scan.get("reason"), at=now)
@@ -458,11 +471,13 @@ def process(source, step, cursor, calendar, revision):
         ryu_status = "live" if (now - last_sent_at) < 15 else "idle"
         ryu_desc = f"Zero-latency dispatch · {sent_count} sent" if sent_count else "Zero-latency dispatch · standby"
         mark_worker(workers, ryu_status, reason=ryu_desc, at=now, name="ryu")
+        mark_worker(workers, "live", reason=f"{shinra_data['candles_analyzed']} candles · {shinra_data['edge_score']}% Expectancy", at=now, name="shinra")
         state_payload = dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,
-                  workers=workers, latency_ms=latency_ms, error=None)
+                  workers=workers, latency_ms=latency_ms, pattern_research=research_res, error=None)
         if b_analysis:
+            b_analysis["pattern_research"] = research_res
             state_payload["b_analysis"] = b_analysis
         store.put("state", "market", state_payload)
     return snapshot

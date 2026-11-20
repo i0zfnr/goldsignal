@@ -426,6 +426,24 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
           )}
         </div>
       </details>
+
+      {/* 4. Shinra Quantitative Intelligence & 1,000-Pattern Match */}
+      {analysis.pattern_research && (
+        <details className="insight-details" open>
+          <summary>Shinra Pattern Intelligence (1,000 Candles)</summary>
+          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+            <div className="compact-zone-item" style={{ background: "rgba(168, 85, 247, 0.1)", borderLeft: "3px solid #a855f7" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span><strong>Shinra Edge:</strong> {analysis.pattern_research.shinra.edge_score}% Win Expectancy</span>
+                <span className="badge small badge-accent">{analysis.pattern_research.kai.matches} Matches</span>
+              </div>
+              <p className="small muted" style={{ marginTop: 3, marginBottom: 0 }}>
+                {analysis.pattern_research.taka.pattern} · {analysis.pattern_research.ren.status}
+              </p>
+            </div>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

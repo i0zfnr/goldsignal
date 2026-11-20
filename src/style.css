@@ -457,6 +457,27 @@ footer a { color: inherit; }
 .hud-label { display: block; font-size: .625rem; font-weight: 700; color: var(--muted); letter-spacing: .06em; }
 .hud-val { display: block; font-size: .9375rem; font-weight: 750; color: #ffffff; margin-top: 2px; }
 
+/* Shinra Research Division */
+.shinra-division-card {
+  margin-bottom: 20px; padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(35, 18, 55, 0.5) 0%, rgba(18, 12, 32, 0.9) 100%);
+  border: 1px solid rgba(192, 132, 252, 0.28); border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.shinra-division-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.shinra-title-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.division-badge {
+  padding: 2px 7px; border-radius: 4px; font-size: .625rem; font-weight: 800; letter-spacing: .08em;
+  background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.6); color: #c084fc;
+}
+.shinra-staff-track {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;
+}
+.shinra-staff-node { display: flex; flex-direction: column; align-items: center; }
+
 /* 2. Pipeline Execution Track */
 .crew-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
