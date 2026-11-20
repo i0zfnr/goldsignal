@@ -181,6 +181,40 @@ def test_admin_error_log_and_performance_reset(db, monkeypatch):
         assert reset_res["archive_id"].startswith("backup:")
 
 
+def test_admin_can_delete_single_performance_record(db, monkeypatch):
+    from goldsignal import store
+
+    password = "fixture-admin-password"
+    salt = "00112233445566778899aabbccddeeff"
+    monkeypatch.setenv("ADMIN_EMAIL", "fixture@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", f"{salt}:{password_hash(password, salt)}")
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
+    with store.transaction() as data:
+        data.put("signal", "s1", dict(id="s1", created=100, status="COMPLETED", fill=100,
+                                      result_per_lot=10, direction="BUY", grade="A"))
+        data.put("event", "e1", dict(id="e1", signal="s1"))
+        data.put("alert", "a1", dict(id="a1", signal="s1", profile="shared", kind="TP1"))
+        data.put("shadow", "s1", dict(id="s1"))
+
+    with TestClient(app) as operator:
+        operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
+        response = operator.request("DELETE", "/api/admin/performance/signal", json={"signal_id": "s1"})
+        assert response.status_code == 200
+        result = response.json()
+        assert result["deleted"] is True and result["signal_id"] == "s1"
+        assert operator.request("DELETE", "/api/admin/performance/signal",
+                                json={"signal_id": "s1"}).status_code == 404
+
+    with store.transaction() as data:
+        assert data.get("signal", "s1") is None
+        assert data.get("event", "e1") is None
+        assert data.get("alert", "a1") is None
+        assert data.get("shadow", "s1") is None
+        archived = data.get("archive_performance", result["archive_id"])
+        assert archived["signal"]["id"] == "s1"
+        assert len(archived["events"]) == 1 and len(archived["alerts"]) == 1
+
+
 def test_hayate_and_ryu_workers_telemetry(db):
     from goldsignal import workers
     state = workers.blank()

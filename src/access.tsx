@@ -1040,6 +1040,19 @@ function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) =
     });
   }
 
+  async function handleDelete(signalId: string) {
+    if (!confirm(`Delete signal ${signalId}? Related events and alerts will be archived first.`)) return;
+    action(async () => {
+      const res = await api<{ deleted: boolean; archive_id: string }>("/api/admin/performance/signal", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signal_id: signalId }),
+      });
+      setMsg(`Deleted ${signalId}. Archived as ${res.archive_id}`);
+      await load();
+    });
+  }
+
   function handleExport() {
     if (!data) return;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1104,6 +1117,7 @@ function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) =
                     <th>Entry Band</th>
                     <th>Status</th>
                     <th>Result / Lot</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1115,6 +1129,12 @@ function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) =
                       <td><Badge>{s.status}</Badge></td>
                       <td className={s.result_per_lot > 0 ? "good" : s.result_per_lot < 0 ? "warn" : ""}>
                         {s.result_per_lot != null ? `$${s.result_per_lot.toFixed(2)}` : "–"}
+                      </td>
+                      <td>
+                        <button className="tiny" type="button" disabled={busy}
+                          onClick={() => void handleDelete(s.id)} aria-label={`Delete ${s.id}`}>
+                          <Trash2 size={13} /> Delete
+                        </button>
                       </td>
                     </tr>
                   ))}

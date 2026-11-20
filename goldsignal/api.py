@@ -90,6 +90,10 @@ def clear_backend_errors(request: Request):
     return {"cleared": True}
 
 
+class DeletePerformanceSignal(BaseModel):
+    signal_id: str = Field(..., min_length=1, max_length=200)
+
+
 @app.get("/api/admin/performance")
 def admin_performance(request: Request):
     admin(request)
@@ -130,6 +134,31 @@ def reset_performance(request: Request):
         for sh in shadow:
             store.delete("shadow", sh["id"])
     return {"reset": True, "archive_id": archive_id}
+
+
+@app.delete("/api/admin/performance/signal")
+def delete_performance_signal(body: DeletePerformanceSignal, request: Request):
+    admin(request)
+    with transaction() as store:
+        signal = store.get("signal", body.signal_id)
+        if not signal:
+            raise HTTPException(404, "Signal record not found.")
+        events = [event for event in store.all("event") if event.get("signal") == body.signal_id]
+        alerts = [alert for alert in store.all("alert") if alert.get("signal") == body.signal_id]
+        shadow = store.get("shadow", body.signal_id)
+        archive_id = f"backup:{int(utc_now())}:{body.signal_id}"
+        store.put("archive_performance", archive_id, {
+            "time": utc_now(), "signal": signal, "events": events, "alerts": alerts, "shadow": shadow,
+        })
+        store.delete("signal", body.signal_id)
+        for event in events:
+            store.delete("event", event["id"])
+        for alert in alerts:
+            store.delete("alert", alert["id"])
+        if shadow:
+            store.delete("shadow", body.signal_id)
+    record("Admin performance", f"Deleted signal record {body.signal_id}; archived as {archive_id}.", level="info")
+    return {"deleted": True, "signal_id": body.signal_id, "archive_id": archive_id}
 
 
 @app.get("/api/admin/workers")
