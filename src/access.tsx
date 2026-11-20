@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
   Activity, AlertTriangle, ArrowUp, BrainCircuit, Check, CheckCircle2, Copy, Cpu,
   Dices, Download, Edit2, Gauge, Key, LineChart, Megaphone, MessageSquare, Plus,
@@ -443,11 +443,26 @@ const OPERATOR_ICONS: Record<string, ReactNode> = {
   hikari: <Megaphone size={12} />,
 };
 
+const OPERATOR_COLORS: Record<string, string> = {
+  kuro: "#38bdf8",
+  kaze: "#f5a524",
+  mizu: "#60a5fa",
+  nanao: "#34d399",
+  hayate: "#fb923c",
+  ryu: "#f87171",
+  shinra: "#a78bfa",
+  taka: "#fbbf24",
+  ren: "#2dd4bf",
+  kai: "#4ade80",
+  hikari: "#f472b6",
+};
+
 function OperatorAvatar({ name, tone }: { name: string; tone: string }) {
   const icon = OPERATOR_ICONS[name] ?? <Activity size={20} />;
+  const color = OPERATOR_COLORS[name] ?? "#94a3b8";
   return (
     <div className={`operator-badge tone-${tone}`}>
-      <div className="operator-avatar">
+      <div className="operator-avatar" style={{ "--op": color } as CSSProperties}>
         <span className="operator-icon">{icon}</span>
         <span className="operator-status-dot" />
       </div>
