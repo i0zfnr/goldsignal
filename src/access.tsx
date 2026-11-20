@@ -443,19 +443,12 @@ const OPERATOR_ICONS: Record<string, ReactNode> = {
   hikari: <Megaphone size={12} />,
 };
 
-function initialsOf(value: string) {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-function OperatorAvatar({ name, label, tone }: { name: string; label: string; tone: string }) {
+function OperatorAvatar({ name, tone }: { name: string; tone: string }) {
+  const icon = OPERATOR_ICONS[name] ?? <Activity size={20} />;
   return (
     <div className={`operator-badge tone-${tone}`}>
       <div className="operator-avatar">
-        <span className="operator-initials">{initialsOf(label || name)}</span>
-        <span className="operator-icon">{OPERATOR_ICONS[name] ?? <Activity size={12} />}</span>
+        <span className="operator-icon">{icon}</span>
         <span className="operator-status-dot" />
       </div>
     </div>
@@ -468,7 +461,7 @@ function CrewCard({ row, isCore = false }: { row: WorkerRow; isCore?: boolean })
     <article className={`crew-card crew-${tone} ${isCore ? "crew-core" : ""}`} title={row.reason ?? row.role}>
       <span className="crew-bubble">{shortReason(row.reason) ?? row.status}</span>
       <div className="crew-avatar-frame">
-        <OperatorAvatar name={row.name} label={row.label} tone={tone} />
+        <OperatorAvatar name={row.name} tone={tone} />
       </div>
       <div className="crew-info">
         <strong>{row.label}</strong>
