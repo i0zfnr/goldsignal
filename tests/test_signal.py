@@ -574,8 +574,12 @@ def test_research_gate_requires_high_edge_for_strategy_b():
     low = {"strategy": "B · liquidity scalp", "grade": "B+", "direction": "BUY", "session": "New York"}
     reason, edge, aligned, grade_ok = worker.research_gate(
         low, {"shinra": {"edge_score": 35}}, {"regime": "EXPANSION"}, [], 0)
-    assert reason and "35" in reason and "no entry" in reason.lower()
+    assert reason and "B/B+ grades are disabled" in reason and "no entry" in reason.lower()
     assert edge == 35 and grade_ok is False
+
+    legacy_low = {"strategy": "M5 setup / M1 entry", "grade": "B+", "direction": "BUY"}
+    assert "B/B+ grades are disabled" in worker.research_gate(
+        legacy_low, {"shinra": {"edge_score": 90}}, {"regime": "NORMAL"}, [], 0)[0]
 
     high = {"strategy": "B · liquidity scalp", "grade": "A", "direction": "BUY", "session": "Tokyo"}
     reason, edge, aligned, grade_ok = worker.research_gate(

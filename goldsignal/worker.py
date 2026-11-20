@@ -39,7 +39,12 @@ GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "12"))
 ENTRY_LIMIT_PER_HOUR = 2
 ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
 GRADE_RANK = {"B": 0, "B+": 1, "A": 2, "A+": 3}
+LOW_SIGNAL_GRADES = ("B", "B+")
 AI_UNAVAILABLE_TEXT = ("unavailable", "paused", "cap reached", "cooling down", "waiting for gemini")
+
+
+def is_low_grade(item):
+    return str(item.get("grade") or "").upper() in LOW_SIGNAL_GRADES
 
 
 def ai_unavailable(model):
@@ -48,9 +53,12 @@ def ai_unavailable(model):
 
 def research_gate(item, research_res, session_res, bars, now):
     edge = float((research_res.get("shinra") or {}).get("edge_score") or 0)
+    grade = str(item.get("grade") or "").upper()
+    if is_low_grade(item):
+        return ("Research watch only — no entry. B/B+ grades are disabled; "
+                "only A and A+ signals publish.", edge, True, False)
     if not str(item.get("strategy") or "").startswith("B"):
         return None, edge, True, True
-    grade = str(item.get("grade") or "").upper()
     grade_ok = GRADE_RANK.get(grade, -1) >= GRADE_RANK.get(SESSION_MIN_GRADE.upper(), 2)
     aggressive = item.get("session") in AGGRESSIVE_SESSIONS or session_res.get("regime") == "EXPANSION"
     aligned = True
@@ -90,7 +98,7 @@ def daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, no
     stop = round((zone["top"] + 2.0) if sign < 0 else (zone["bottom"] - 2.0), 2)
     targets = [round(ref + sign * step, 2) for step in (3.0, 6.0, 10.0)]
     edge = (research_res.get("shinra") or {}).get("edge_score")
-    grade = "A" if (edge or 0) >= 60 else "B"
+    grade = "WATCH"
     item = dict(
         id=key, symbol=SYMBOL, direction=direction, created=now, expiry=now + 21600,
         strategy="Daily bias · labelled watch", grade=grade,
@@ -488,6 +496,7 @@ def process(source, step, cursor, calendar, revision):
         if (not stopped and len(recent_entries) < ENTRY_LIMIT_PER_HOUR
                 and (not model or (retry and now >= retry["after"])) and provider != "rules"
                 and not item.get("confidence_hold")
+                and not is_low_grade(item)
                 and gate(item, snapshot["quote"], now, pause)[0] == "CONFIRM"):
             try:
                 model = (gemini_review(gemini, item, snapshot, calendar,
@@ -553,6 +562,8 @@ def process(source, step, cursor, calendar, revision):
                         dispatch_telegram(
                             f"RESEARCH WATCH ONLY · {SYMBOL} {item['direction']} {item.get('grade', '')}\n"
                             f"{reason}\nDO NOT ENTER — no trade signal was published.")
+            if is_low_grade(item):
+                decision, reason = "WAIT", "B/B+ grades disabled — only A/A+ signals publish."
             baseline, baseline_reason = gate(item, quote, now)
             if demo_account.enabled() and baseline == "CONFIRM" and not store.get("demo_eligible", key):
                 store.put("demo_eligible", key, dict(observed_at=utc_now(), quote_time=quote["time"]))
