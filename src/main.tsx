@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bell, CalendarDays, Calculator, ChartCandlestick, ChartNoAxesCombined, CircleAlert, History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X, Activity } from "lucide-react";
+import {
+  Bell, CalendarDays, Calculator, ChartCandlestick, ChartNoAxesCombined, CircleAlert,
+  History, Menu, MessageSquare, Settings2, Upload, UserRound, Users, X, Activity,
+  Gauge, ZoomIn, ZoomOut, Check, Crop, Trash2
+} from "lucide-react";
 import { Chart } from "./chart";
 import { Performance } from "./performance";
 import { LotSize } from "./lot";
@@ -39,7 +43,7 @@ type DashboardView = typeof dashboardViews[number][0] | AdminView | "profile";
 const viewIcons = {
   signal: ChartCandlestick, performance: ChartNoAxesCombined, lot: Calculator, history: History, news: CalendarDays,
   alerts: Bell, profile: UserRound, "admin-users": Users, "admin-workers": Activity, "admin-ai": Settings2,
-  "admin-chat": MessageSquare, "admin-errors": CircleAlert,
+  "admin-chat": MessageSquare, "admin-performance": Gauge, "admin-errors": CircleAlert,
 };
 
 function currentView(isAdmin: boolean): DashboardView {
@@ -56,33 +60,143 @@ function currentView(isAdmin: boolean): DashboardView {
 type PushStatus = { enabled: boolean; test: "queued" | "sent" | "failed" | "expired" | null };
 type ViewerProfile = { display_name: string; role: string; photo: string | null };
 
-async function resizeProfilePhoto(file: File) {
-  if (file.size > 12 * 1024 * 1024) throw new Error("Choose a photo smaller than 12 MB.");
-  const url = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 96;
-    const context = canvas.getContext("2d");
-    if (!context || !image.naturalWidth || !image.naturalHeight) throw new Error("Could not read this photo.");
-    const size = Math.min(image.naturalWidth, image.naturalHeight);
-    context.drawImage(image, (image.naturalWidth - size) / 2, (image.naturalHeight - size) / 2, size, size, 0, 0, 96, 96);
-    for (const quality of [0.83, 0.68, 0.50, 0.3]) {
-      const photo = canvas.toDataURL("image/jpeg", quality);
-      if (photo.startsWith("data:image/jpeg;base64,") && photo.length <= 7000) return photo;
-    }
-    throw new Error("Could not resize this photo.");
-  } finally {
-    URL.revokeObjectURL(url);
+function PhotoCropModal({
+  file,
+  onApply,
+  onCancel,
+}: {
+  file: File;
+  onApply: (dataUrl: string) => void;
+  onCancel: () => void;
+}) {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [zoom, setZoom] = useState(1.1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = url;
+    img.onload = () => setImage(img);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  function handlePointerDown(e: React.PointerEvent) {
+    setDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
   }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    if (!dragging) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy });
+  }
+
+  function handlePointerUp(e: React.PointerEvent) {
+    setDragging(false);
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+  }
+
+  function applyCrop() {
+    if (!image) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 96;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const viewportSize = 240;
+    const minDim = Math.min(image.naturalWidth, image.naturalHeight);
+    const scale = (minDim / viewportSize) / zoom;
+
+    const cropW = viewportSize * scale;
+    const cropH = viewportSize * scale;
+    const centerX = (image.naturalWidth / 2) - (pan.x * scale);
+    const centerY = (image.naturalHeight / 2) - (pan.y * scale);
+
+    const sx = Math.max(0, Math.min(image.naturalWidth - cropW, centerX - cropW / 2));
+    const sy = Math.max(0, Math.min(image.naturalHeight - cropH, centerY - cropH / 2));
+
+    ctx.drawImage(image, sx, sy, cropW, cropH, 0, 0, 96, 96);
+
+    for (const q of [0.82, 0.65, 0.48, 0.32]) {
+      const dataUrl = canvas.toDataURL("image/jpeg", q);
+      if (dataUrl.length <= 7000) {
+        onApply(dataUrl);
+        return;
+      }
+    }
+    onApply(canvas.toDataURL("image/jpeg", 0.28));
+  }
+
+  return (
+    <div className="crop-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="crop-title">
+      <div className="crop-modal-card">
+        <div className="crop-modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Crop size={18} className="good" />
+            <h3 id="crop-title" style={{ margin: 0 }}>Crop Profile Photo</h3>
+          </div>
+          <button type="button" className="close-btn" onClick={onCancel} aria-label="Close"><X size={18} /></button>
+        </div>
+        <p className="small muted">Drag photo to adjust position. Use slider to zoom in or out.</p>
+
+        <div
+          className="crop-viewport"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          {image && (
+            <img
+              src={image.src}
+              alt="Crop preview"
+              draggable={false}
+              className="crop-preview-img"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              }}
+            />
+          )}
+          <div className="crop-circle-frame" />
+        </div>
+
+        <div className="crop-slider-row">
+          <button type="button" className="tiny-zoom-btn" onClick={() => setZoom(z => Math.max(0.6, z - 0.1))}><ZoomOut size={16} /></button>
+          <input
+            type="range"
+            min="0.6"
+            max="3.0"
+            step="0.05"
+            value={zoom}
+            onChange={e => setZoom(Number(e.target.value))}
+            className="crop-zoom-slider"
+          />
+          <button type="button" className="tiny-zoom-btn" onClick={() => setZoom(z => Math.min(3.0, z + 0.1))}><ZoomIn size={16} /></button>
+        </div>
+
+        <div className="crop-modal-footer">
+          <button type="button" onClick={onCancel}>Cancel</button>
+          <button type="button" className="primary" onClick={applyCrop}>
+            <Check size={16} /> Apply & Use Photo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Profile() {
   const [profile, setProfile] = useState<ViewerProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [cropFile, setCropFile] = useState<File | null>(null);
+
   useEffect(() => {
     const abort = new AbortController();
     api<ViewerProfile>("/api/viewer-profile", { signal: abort.signal })
@@ -90,21 +204,19 @@ function Profile() {
       .catch(() => { if (!abort.signal.aborted) setMessage("Could not load your profile."); });
     return () => abort.abort();
   }, []);
-  async function choosePhoto(input: HTMLInputElement) {
+
+  function choosePhoto(input: HTMLInputElement) {
     const file = input.files?.[0];
     input.value = "";
     if (!file || busy) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const photo = await resizeProfilePhoto(file);
-      setProfile(previous => previous && { ...previous, photo });
-    } catch {
-      setMessage("Could not use this photo. Choose a readable image smaller than 12 MB.");
-    } finally {
-      setBusy(false);
+    if (file.size > 12 * 1024 * 1024) {
+      setMessage("Choose a photo smaller than 12 MB.");
+      return;
     }
+    setMessage("");
+    setCropFile(file);
   }
+
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!profile) return;
@@ -116,35 +228,87 @@ function Profile() {
         body: JSON.stringify({ display_name: profile.display_name, photo: profile.photo }),
       });
       setProfile(saved);
-      setMessage("Profile saved.");
+      setMessage("Profile saved successfully.");
     } catch (failure) {
       setMessage((failure as Error).message);
     } finally {
       setBusy(false);
     }
   }
-  return <section className="panel below profile-panel" id="profile" aria-labelledby="profile-title">
-    <PanelHeading id="profile-title" title="Profile">
-      {profile && <Badge>{profile.role === "admin" ? "Admin" : "Viewer"}</Badge>}
-    </PanelHeading>
-    {profile ? <form className="profile-form" onSubmit={event => void save(event)}>
-      <div className="profile-photo">
-        {profile.photo ? <img src={profile.photo} width="64" height="64" alt="Your profile photo" /> :
-          <span className="profile-photo-placeholder" aria-hidden="true">{profile.display_name.trim()[0]?.toUpperCase() || "G"}</span>}
-        <label className="photo-picker">
-          <input type="file" accept="image/*" disabled={busy} aria-label="Profile photo"
-            onChange={event => void choosePhoto(event.currentTarget)} />
-          <span aria-hidden="true"><Upload size={16} /> Choose photo</span>
-        </label>
-        {profile.photo && <button type="button" disabled={busy}
-          onClick={() => { setProfile({ ...profile, photo: null }); setMessage(""); }}>Remove photo</button>}
-      </div>
-      <label>Display name<input value={profile.display_name} maxLength={60} autoComplete="nickname"
-        disabled={busy} onChange={event => setProfile({ ...profile, display_name: event.target.value })} /></label>
-      <button type="submit" className="primary" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
-    </form> : !message && <LoadingState>Loading profile…</LoadingState>}
-    {message && <p role="status">{message}</p>}
-  </section>;
+
+  return (
+    <section className="panel below profile-panel modern-profile-card" id="profile" aria-labelledby="profile-title">
+      <PanelHeading id="profile-title" title="Trader Account Profile">
+        {profile && <Badge tone={profile.role === "admin" ? "accent" : "positive"}>{profile.role === "admin" ? "Administrator" : "VIP Trader"}</Badge>}
+      </PanelHeading>
+
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          onApply={dataUrl => {
+            setProfile(prev => prev && { ...prev, photo: dataUrl });
+            setCropFile(null);
+            setMessage("Photo cropped. Click 'Save Profile' to apply changes.");
+          }}
+          onCancel={() => setCropFile(null)}
+        />
+      )}
+
+      {profile ? (
+        <form className="profile-form modern-profile-form" onSubmit={event => void save(event)}>
+          <div className="profile-photo-hero">
+            <div className="profile-avatar-container">
+              {profile.photo ? (
+                <img src={profile.photo} width="84" height="84" alt="Your profile photo" className="profile-avatar-img" />
+              ) : (
+                <span className="profile-photo-placeholder" aria-hidden="true">{profile.display_name.trim()[0]?.toUpperCase() || "G"}</span>
+              )}
+            </div>
+
+            <div className="profile-photo-controls">
+              <strong>Account Portrait</strong>
+              <p className="small muted">Upload and crop your profile avatar. PNG or JPEG up to 12 MB.</p>
+              <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                <label className="photo-picker">
+                  <input type="file" accept="image/*" disabled={busy} aria-label="Profile photo"
+                    onChange={event => void choosePhoto(event.currentTarget)} />
+                  <span aria-hidden="true"><Upload size={16} /> Choose & Crop Photo</span>
+                </label>
+                {profile.photo && (
+                  <button type="button" disabled={busy} onClick={() => { setProfile({ ...profile, photo: null }); setMessage(""); }}>
+                    <Trash2 size={15} /> Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="profile-fields-grid">
+            <label>Display Name
+              <input
+                value={profile.display_name}
+                maxLength={60}
+                autoComplete="nickname"
+                disabled={busy}
+                placeholder="Enter trader alias…"
+                onChange={event => setProfile({ ...profile, display_name: event.target.value })}
+              />
+            </label>
+            <label>Account Role
+              <input value={profile.role === "admin" ? "Master Admin" : "Viewer Access"} disabled readOnly style={{ opacity: 0.75 }} />
+            </label>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+            <button type="submit" className="primary" disabled={busy} style={{ minWidth: 140 }}>
+              {busy ? "Saving…" : "Save Profile"}
+            </button>
+            {message && <p className="small good" role="status">{message}</p>}
+          </div>
+        </form>
+      ) : !message && <LoadingState>Loading profile…</LoadingState>}
+    </section>
+  );
 }
 
 function BAnalysisPanel({ analysis, displayTime, price }: {
@@ -666,6 +830,61 @@ function App({ role, signOut, expired }: {
       </div>
       {hasAdmin && <AdminSettings view={adminViews.find(([id]) => id === view)?.[0]} />}
     </main>
+
+    {/* Mobile Trading App Bottom Navigation Bar */}
+    <nav className="mobile-trading-bar" aria-label="Mobile Navigation">
+      <button
+        type="button"
+        className={`mobile-tab-btn ${view === "signal" ? "active" : ""}`}
+        onClick={event => { select(event as any, null); setView("signal"); }}
+      >
+        <ChartCandlestick size={19} />
+        <span>Trade</span>
+      </button>
+      <button
+        type="button"
+        className={`mobile-tab-btn ${view === "lot" ? "active" : ""}`}
+        onClick={() => setView("lot")}
+      >
+        <Calculator size={19} />
+        <span>Lot/PnL</span>
+      </button>
+      <button
+        type="button"
+        className={`mobile-tab-btn ${view === "performance" ? "active" : ""}`}
+        onClick={() => setView("performance")}
+      >
+        <ChartNoAxesCombined size={19} />
+        <span>Stats</span>
+      </button>
+      <button
+        type="button"
+        className={`mobile-tab-btn ${view === "history" ? "active" : ""}`}
+        onClick={() => setView("history")}
+      >
+        <History size={19} />
+        <span>Signals</span>
+      </button>
+      <button
+        type="button"
+        className={`mobile-tab-btn ${view === "alerts" ? "active" : ""}`}
+        onClick={() => setView("alerts")}
+      >
+        <Bell size={19} />
+        <span>Alerts</span>
+      </button>
+      {hasAdmin && (
+        <button
+          type="button"
+          className={`mobile-tab-btn ${view.startsWith("admin-") ? "active" : ""}`}
+          onClick={() => setView("admin-workers")}
+        >
+          <Activity size={19} />
+          <span>Admin</span>
+        </button>
+      )}
+    </nav>
+
     <footer><a href="https://www.tradingview.com/">TradingView Lightweight Charts™</a> · <a href="/NOTICE">Attribution notice</a> · <a href="https://shadcndashboard.dev/">Shadcn Dashboard</a></footer>
   </div>;
 }

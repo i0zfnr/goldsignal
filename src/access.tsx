@@ -1,15 +1,27 @@
-import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  AlertTriangle, ArrowUp, Check, CheckCircle2, Copy, Download, Edit2,
+  Gauge, Key, MessageSquare, Plus, RefreshCw, RotateCcw, RotateCw,
+  Search, Send, Sparkles, Trash2, UserPlus, Users, X
+} from "lucide-react";
 import { InstallButton } from "./install";
 import { ThemeToggle } from "./theme";
 import { Badge, EmptyState, LoadingState, PanelHeading } from "./ui";
 
 type Role = "admin" | "viewer" | "demo" | null;
+type AccessKey = {
+  id: string;
+  label: string;
+  revoked: boolean;
+  token?: string;
+  created?: number;
+};
 type Settings = {
   configured: boolean;
   enabled: boolean;
   model: string;
   paused?: boolean;
-  keys: Array<{ id: string; label: string; revoked: boolean }>;
+  keys: AccessKey[];
 };
 
 export class ApiError extends Error {
@@ -74,16 +86,51 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
 
 type ChatTurn = { role: "user" | "model"; text: string };
 
+function renderMarkdown(text: string) {
+  return text.split("\n").map((line, lIdx) => {
+    const isBullet = line.trim().startsWith("- ") || line.trim().startsWith("* ");
+    const content = isBullet ? line.trim().slice(2) : line;
+    const parts = content.split(/(\*\*.*?\*\*|`.*?`)/g);
+    const parsed = parts.map((part, pIdx) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={pIdx}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("`") && part.endsWith("`")) {
+        return <code key={pIdx} className="chat-code">{part.slice(1, -1)}</code>;
+      }
+      return part;
+    });
+    if (isBullet) {
+      return <li key={lIdx} className="chat-bullet">{parsed}</li>;
+    }
+    return <p key={lIdx} className="chat-line">{parsed || "\u00A0"}</p>;
+  });
+}
+
 function AdminChat({ configured, model }: { configured: boolean; model: string }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!message.trim() || busy) return;
-    const user: ChatTurn = { role: "user", text: message.trim() };
+  const quickPrompts = [
+    "📊 Analyze current XAUUSD price & structure",
+    "📍 Where are the nearest SMC liquidity zones?",
+    "📅 Check today's high-impact economic news",
+    "⚡ What is Kaze Strategy B status right now?",
+  ];
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [turns, busy]);
+
+  async function sendTurn(textToSend: string) {
+    if (!textToSend.trim() || busy) return;
+    const user: ChatTurn = { role: "user", text: textToSend.trim() };
     const context = [...turns.slice(-38), user];
     const size = () => new TextEncoder().encode(JSON.stringify({ turns: context })).length;
     while (context.length > 1 && size() > 7800) context.splice(0, 2);
@@ -106,7 +153,7 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
           return;
         }
       }
-      throw new Error("Gemini took too long to respond.");
+      throw new Error("AI took too long to respond.");
     } catch (failure) {
       setTurns(turns);
       setMessage(user.text);
@@ -116,65 +163,236 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
     }
   }
 
-  return <section className="panel access-panel admin-chat chat-panel" aria-labelledby="gemini-chat-title">
-    <PanelHeading title="Gemini chat" id="gemini-chat-title" as="h3">
-      {configured && <Badge>{model}</Badge>}
-    </PanelHeading>
-    {configured ? <>
-      <div className="chat-turns" role="log" aria-label="Conversation">
-        {turns.map((turn, index) => <article key={index} data-speaker={turn.role}>
-          <strong>{turn.role === "user" ? "You" : "Gemini"}</strong>
-          <p>{turn.text}</p>
-        </article>)}
+  function handleCopy(text: string, idx: number) {
+    void navigator.clipboard.writeText(text);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  }
+
+  return (
+    <section className="panel access-panel modern-chat-card" aria-labelledby="ai-chat-title">
+      <div className="modern-chat-header">
+        <div className="chat-header-info">
+          <div className="chat-avatar-ai"><Sparkles size={18} /></div>
+          <div>
+            <h3 id="ai-chat-title" className="chat-title">GoldSignal AI Copilot</h3>
+            <span className="chat-telemetry-badge">
+              <span className="telemetry-online-dot" /> Connected to live market telemetry
+            </span>
+          </div>
+        </div>
+        <Badge tone="accent">{model}</Badge>
       </div>
-      <form className="access-form" onSubmit={submit}>
-        <label>Message<textarea value={message} onChange={event => setMessage(event.target.value)} rows={3} required disabled={busy} /></label>
-        <button className="primary" type="submit" disabled={busy}>{busy ? "Waiting for Gemini…" : "Send message"}</button>
-      </form>
-      {error && <p className="warn" role="alert">{error}</p>}
-    </> : <EmptyState>Save your API key in Gemini review to start chatting.</EmptyState>}
-  </section>;
+
+      {configured ? (
+        <div className="modern-chat-container">
+          <div ref={scrollRef} className="modern-chat-messages" role="log" aria-label="Conversation history">
+            {turns.length === 0 && (
+              <div className="chat-welcome-state">
+                <div className="chat-welcome-icon"><Sparkles size={28} /></div>
+                <h4>Institutional Market Copilot</h4>
+                <p className="small muted">Ask anything about live XAUUSD price action, SMC liquidity zones, MTF bias, active trade signals, or economic news.</p>
+              </div>
+            )}
+            {turns.map((turn, index) => {
+              const isUser = turn.role === "user";
+              return (
+                <div key={index} className={`chat-bubble-row ${isUser ? "user-row" : "ai-row"}`}>
+                  {!isUser && (
+                    <div className="chat-message-avatar ai"><Sparkles size={16} /></div>
+                  )}
+                  <div className={`chat-bubble ${isUser ? "user-bubble" : "ai-bubble"}`}>
+                    <div className="chat-bubble-author">
+                      <span>{isUser ? "You" : "GoldSignal AI"}</span>
+                      {!isUser && (
+                        <button
+                          type="button"
+                          className="chat-copy-btn"
+                          title="Copy response"
+                          onClick={() => handleCopy(turn.text, index)}
+                        >
+                          {copiedIdx === index ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedIdx === index ? "Copied" : "Copy"}</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="chat-bubble-content">
+                      {isUser ? <p>{turn.text}</p> : renderMarkdown(turn.text)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {busy && (
+              <div className="chat-bubble-row ai-row">
+                <div className="chat-message-avatar ai"><Sparkles size={16} /></div>
+                <div className="chat-bubble ai-bubble typing-bubble">
+                  <div className="typing-dots">
+                    <span /><span /><span />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="chat-bottom-dock">
+            <div className="chat-prompts-strip">
+              {quickPrompts.map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  className="quick-prompt-btn"
+                  disabled={busy}
+                  onClick={() => void sendTurn(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <form
+              className="chat-input-form"
+              onSubmit={e => {
+                e.preventDefault();
+                void sendTurn(message);
+              }}
+            >
+              <textarea
+                className="chat-input-area"
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendTurn(message);
+                  }
+                }}
+                rows={1}
+                placeholder="Ask about price, zones, bias, or trade execution… (Enter to send)"
+                disabled={busy}
+              />
+              <button className="chat-send-btn" type="submit" disabled={busy || !message.trim()} aria-label="Send">
+                <ArrowUp size={18} />
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : (
+        <EmptyState>Save your API key in AI Configuration to activate the copilot.</EmptyState>
+      )}
+      {error && <p className="warn small" role="alert" style={{ marginTop: 8 }}>{error}</p>}
+    </section>
+  );
 }
 
 type BackendLogEntry = { time: number; source: string; level: "error" | "info"; message: string };
 
 function BackendLog() {
   const [entries, setEntries] = useState<BackendLogEntry[] | null>(null);
+  const [timeframe, setTimeframe] = useState<"24h" | "7d" | "all">("24h");
+  const [levelFilter, setLevelFilter] = useState<"all" | "error" | "info">("all");
   const [busy, setBusy] = useState(true);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState("");
 
-  async function refresh() {
-    setBusy(true);
+  async function refresh(isInitial = false) {
+    if (isInitial) setBusy(true);
     setError("");
     try {
-      const result = await api<{ entries: BackendLogEntry[] }>("/api/admin/errors");
+      const result = await api<{ entries: BackendLogEntry[] }>(`/api/admin/errors?timeframe=${timeframe}`);
       setEntries(result.entries);
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
-      setBusy(false);
+      if (isInitial) setBusy(false);
     }
   }
-  useEffect(() => { void refresh(); }, []);
 
-  return <section className="panel access-panel admin-chat" aria-labelledby="backend-log-title">
-    <PanelHeading title="Backend error log" id="backend-log-title" as="h3">
-      <button type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "Refreshing…" : "Refresh log"}</button>
-    </PanelHeading>
-    {error && <p className="warn" role="alert">{error}{entries && " Showing last loaded entries."}</p>}
-    {!entries && busy && <LoadingState>Loading backend log…</LoadingState>}
-    {entries?.length === 0 && <EmptyState>No backend errors recorded yet.</EmptyState>}
-    {!!entries?.length && <ol className="backend-log">
-      {entries.map((entry, index) => <li key={`${entry.time}-${index}`}>
-        <div className="backend-log-meta small">
-          <Badge tone={entry.level === "error" ? "negative" : "neutral"}>{entry.level === "error" ? "Error" : "Info"}</Badge>
-          <span>{entry.source}</span>
-          <time className="muted" dateTime={new Date(entry.time).toISOString()}>{new Date(entry.time).toLocaleString()}</time>
+  useEffect(() => {
+    void refresh(true);
+    const timer = setInterval(() => void refresh(false), 5000);
+    return () => clearInterval(timer);
+  }, [timeframe]);
+
+  async function clearLogs() {
+    if (!confirm("Are you sure you want to permanently clear all backend error logs?")) return;
+    setClearing(true);
+    try {
+      await api("/api/admin/errors", { method: "DELETE" });
+      setEntries([]);
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  const filtered = (entries ?? []).filter(e => levelFilter === "all" || e.level === levelFilter);
+
+  return (
+    <section className="panel access-panel log-page-card" aria-labelledby="backend-log-title">
+      <PanelHeading title="Backend Error & Telemetry Log" id="backend-log-title" as="h3">
+        <div style={{ display: "flex", gap: 6 }}>
+          <button type="button" disabled={busy} onClick={() => void refresh(true)}>
+            <RotateCw size={14} /> Refresh
+          </button>
+          <button type="button" className="danger-button" disabled={clearing || !entries?.length} onClick={() => void clearLogs()}>
+            <Trash2 size={14} /> Clear Log
+          </button>
         </div>
-        <p>{entry.message}</p>
-      </li>)}
-    </ol>}
-  </section>;
+      </PanelHeading>
+
+      <div className="log-filter-bar">
+        <div className="segment-group" role="group" aria-label="Timeframe">
+          {(["24h", "7d", "all"] as const).map(tf => (
+            <button
+              key={tf}
+              type="button"
+              className={timeframe === tf ? "primary small" : "small"}
+              onClick={() => setTimeframe(tf)}
+            >
+              {tf === "24h" ? "Last 24 Hours" : tf === "7d" ? "Last 7 Days" : "All Time"}
+            </button>
+          ))}
+        </div>
+
+        <div className="segment-group" role="group" aria-label="Level">
+          {(["all", "error", "info"] as const).map(lvl => (
+            <button
+              key={lvl}
+              type="button"
+              className={levelFilter === lvl ? "primary small" : "small"}
+              onClick={() => setLevelFilter(lvl)}
+            >
+              {lvl === "all" ? "All Levels" : lvl === "error" ? "Errors Only" : "Info"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <p className="warn" role="alert">{error}{entries && " Showing cached entries."}</p>}
+      {!entries && busy && <LoadingState>Loading backend logs…</LoadingState>}
+      {entries?.length === 0 && <EmptyState>No backend error records found in this timeframe.</EmptyState>}
+      {!!filtered.length && (
+        <ol className="backend-log modern-log-list">
+          {filtered.map((entry, index) => (
+            <li key={`${entry.time}-${index}`} className={`log-item log-${entry.level}`}>
+              <div className="backend-log-meta small">
+                <Badge tone={entry.level === "error" ? "negative" : "neutral"}>
+                  {entry.level === "error" ? "ERROR" : "INFO"}
+                </Badge>
+                <strong className="log-source">{entry.source}</strong>
+                <time className="muted" dateTime={new Date(entry.time).toISOString()}>
+                  {new Date(entry.time).toLocaleString()}
+                </time>
+              </div>
+              <p className="log-msg">{entry.message}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
 }
 
 export const adminViews = [
@@ -182,6 +400,7 @@ export const adminViews = [
   ["admin-workers", "Workers"],
   ["admin-ai", "AI Configuration"],
   ["admin-chat", "AI Chat"],
+  ["admin-performance", "Performance Control"],
   ["admin-errors", "Error Log"],
 ] as const;
 type WorkerRow = { name: string; label: string; role: string; status: string; reason: string | null; age_seconds: number | null };
@@ -609,9 +828,375 @@ function TelegramPanel({ action, busy }: { action: (w: () => Promise<void>) => v
   );
 }
 
+function AdminUsers({
+  settings,
+  refresh,
+  action,
+  busy,
+}: {
+  settings: Settings;
+  refresh: () => Promise<void>;
+  action: (w: () => Promise<void>) => void;
+  busy: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const [newKey, setNewKey] = useState<{ key: string; label: string } | null>(null);
+  const [newLabel, setNewLabel] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabelText, setEditLabelText] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [filterTab, setFilterTab] = useState<"all" | "active" | "revoked">("all");
+
+  async function create(e: FormEvent) {
+    e.preventDefault();
+    if (!newLabel.trim()) return;
+    action(async () => {
+      const res = await send<{ key: string; id: string; label: string }>("/api/admin/keys", "POST", { label: newLabel.trim() });
+      setNewKey({ key: res.key, label: res.label });
+      setNewLabel("");
+      await refresh();
+    });
+  }
+
+  async function saveEdit(id: string) {
+    if (!editLabelText.trim()) return;
+    action(async () => {
+      await api("/api/admin/keys", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, label: editLabelText.trim() }),
+      });
+      setEditingId(null);
+      await refresh();
+    });
+  }
+
+  async function toggleRevoke(key: AccessKey) {
+    const nextRevoked = !key.revoked;
+    action(async () => {
+      await api("/api/admin/keys", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: key.id, label: key.label, revoked: nextRevoked }),
+      });
+      await refresh();
+    });
+  }
+
+  async function deleteKey(id: string, label: string) {
+    if (!confirm(`Permanently delete user "${label}"? This key will be erased.`)) return;
+    action(async () => {
+      await api(`/api/admin/keys?id=${encodeURIComponent(id)}&permanent=true`, { method: "DELETE" });
+      await refresh();
+    });
+  }
+
+  function copyText(text: string, id: string) {
+    void navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  const keys = settings.keys || [];
+  const filtered = keys.filter(k => {
+    const matchSearch = k.label.toLowerCase().includes(search.toLowerCase()) || (k.token && k.token.includes(search));
+    const matchTab = filterTab === "all" || (filterTab === "active" ? !k.revoked : k.revoked);
+    return matchSearch && matchTab;
+  });
+
+  return (
+    <section className="panel access-panel modern-users-card">
+      <PanelHeading title="User Access Management" as="h3">
+        <Badge tone="positive">{keys.filter(k => !k.revoked).length} active users</Badge>
+      </PanelHeading>
+
+      {/* New Key Generated Success Banner with Immediate 1-Click Copy */}
+      {newKey && (
+        <div className="new-key-banner">
+          <div className="new-key-header">
+            <CheckCircle2 size={20} className="good" />
+            <div>
+              <strong>New User Access Key Generated!</strong>
+              <p className="small muted">Key for <b>{newKey.label}</b>. Copy this key now to share privately.</p>
+            </div>
+          </div>
+          <div className="new-key-copy-box">
+            <input value={newKey.key} readOnly onFocus={e => e.currentTarget.select()} className="new-key-input" />
+            <button
+              type="button"
+              className="primary new-key-copy-btn"
+              onClick={() => copyText(newKey.key, "new-key-btn")}
+            >
+              {copiedId === "new-key-btn" ? <Check size={16} /> : <Copy size={16} />}
+              {copiedId === "new-key-btn" ? "Copied!" : "Copy Key"}
+            </button>
+            <button type="button" className="close-banner-btn" onClick={() => setNewKey(null)} title="Close">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add User Bar & Search */}
+      <div className="users-action-row">
+        <form className="add-user-inline-form" onSubmit={create}>
+          <input
+            value={newLabel}
+            onChange={e => setNewLabel(e.target.value)}
+            placeholder="Enter new user name / label…"
+            required
+            maxLength={80}
+            disabled={busy}
+          />
+          <button className="primary" type="submit" disabled={busy || !newLabel.trim()}>
+            <UserPlus size={16} /> Add User
+          </button>
+        </form>
+
+        <div className="user-search-wrapper">
+          <Search size={15} className="search-icon" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search users…"
+            className="user-search-input"
+          />
+        </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="user-filter-tabs segment-group" style={{ marginBlock: "10px 14px" }}>
+        {(["all", "active", "revoked"] as const).map(tab => (
+          <button
+            key={tab}
+            type="button"
+            className={filterTab === tab ? "primary small" : "small"}
+            onClick={() => setFilterTab(tab)}
+          >
+            {tab === "all" ? `All (${keys.length})` : tab === "active" ? `Active (${keys.filter(k => !k.revoked).length})` : `Revoked (${keys.filter(k => k.revoked).length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Users Table */}
+      {filtered.length > 0 ? (
+        <div className="users-table-container">
+          <table className="users-management-table" role="table">
+            <thead>
+              <tr>
+                <th scope="col">User / Label</th>
+                <th scope="col">Status</th>
+                <th scope="col">Key Token</th>
+                <th scope="col" style={{ textAlign: "end" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(key => {
+                const isEditing = editingId === key.id;
+                const tokenToShow = key.token || key.id;
+                const isCopied = copiedId === key.id;
+                return (
+                  <tr key={key.id} className={key.revoked ? "user-row-revoked" : ""}>
+                    <td>
+                      {isEditing ? (
+                        <div className="inline-edit-box">
+                          <input
+                            value={editLabelText}
+                            onChange={e => setEditLabelText(e.target.value)}
+                            maxLength={80}
+                            autoFocus
+                          />
+                          <button type="button" className="primary tiny-btn" onClick={() => void saveEdit(key.id)} disabled={busy}><Check size={14} /></button>
+                          <button type="button" className="tiny-btn" onClick={() => setEditingId(null)}><X size={14} /></button>
+                        </div>
+                      ) : (
+                        <div className="user-name-cell">
+                          <strong>{key.label}</strong>
+                          <button
+                            type="button"
+                            className="inline-pencil-btn"
+                            title="Edit label"
+                            onClick={() => { setEditingId(key.id); setEditLabelText(key.label); }}
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <Badge tone={key.revoked ? "neutral" : "positive"}>
+                        {key.revoked ? "Revoked" : "Active"}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="token-copy-cell">
+                        <code>{tokenToShow.slice(0, 10)}…{tokenToShow.slice(-4)}</code>
+                        <button
+                          type="button"
+                          className="table-copy-btn"
+                          title="Copy full key token"
+                          onClick={() => copyText(tokenToShow, key.id)}
+                        >
+                          {isCopied ? <Check size={13} className="good" /> : <Copy size={13} />}
+                        </button>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "end" }}>
+                      <div className="table-actions-cell">
+                        <button
+                          type="button"
+                          className={key.revoked ? "restore-btn" : "revoke-btn"}
+                          disabled={busy}
+                          onClick={() => void toggleRevoke(key)}
+                          title={key.revoked ? "Restore access" : "Revoke access"}
+                        >
+                          {key.revoked ? "Restore" : "Revoke"}
+                        </button>
+                        <button
+                          type="button"
+                          className="danger-button delete-btn"
+                          disabled={busy}
+                          onClick={() => void deleteKey(key.id, key.label)}
+                          title="Delete user permanently"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState>No matching user keys found.</EmptyState>
+      )}
+    </section>
+  );
+}
+
+function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) => void; busy: boolean }) {
+  const [data, setData] = useState<{
+    signals_count: number; shadow_count: number; fills_count: number;
+    wins: number; losses: number; win_rate: number; total_pnl_per_lot: number;
+    signals: any[];
+  } | null>(null);
+  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+
+  async function load() {
+    try {
+      setData(await api<any>("/api/admin/performance"));
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function handleReset() {
+    if (!confirm("⚠️ RESET PERFORMANCE DATA?\n\nThis will clear all current signals and shadow trades, archive history to a backup, and reset counters. Continue?")) return;
+    action(async () => {
+      const res = await api<{ reset: boolean; archive_id: string }>("/api/admin/performance/reset", { method: "POST" });
+      setMsg(`Performance data reset successfully! Archived as ${res.archive_id}`);
+      await load();
+    });
+  }
+
+  function handleExport() {
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `goldsignal-performance-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section className="panel access-panel admin-performance-card">
+      <PanelHeading title="Admin Performance Controls" as="h3">
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={handleExport} disabled={!data || !data.signals_count}>
+            <Download size={14} /> Export JSON
+          </button>
+          <button type="button" className="danger-button" onClick={() => void handleReset()} disabled={busy}>
+            <RotateCcw size={14} /> Reset Performance Data
+          </button>
+        </div>
+      </PanelHeading>
+
+      {msg && <p className="small good" style={{ marginBottom: 10 }}>{msg}</p>}
+      {error && <p className="small warn">{error}</p>}
+
+      {data && (
+        <>
+          <div className="admin-perf-grid">
+            <div className="admin-perf-card">
+              <span className="perf-label">TOTAL SIGNALS</span>
+              <strong className="perf-val">{data.signals_count}</strong>
+            </div>
+            <div className="admin-perf-card">
+              <span className="perf-label">COMPLETED FILLS</span>
+              <strong className="perf-val">{data.fills_count}</strong>
+            </div>
+            <div className="admin-perf-card">
+              <span className="perf-label">WIN RATE</span>
+              <strong className={`perf-val ${data.win_rate >= 50 ? "good" : ""}`}>{data.win_rate}%</strong>
+              <small className="muted">{data.wins}W / {data.losses}L</small>
+            </div>
+            <div className="admin-perf-card">
+              <span className="perf-label">TOTAL P/L PER LOT</span>
+              <strong className={`perf-val ${data.total_pnl_per_lot >= 0 ? "good" : "warn"}`}>${data.total_pnl_per_lot.toFixed(2)}</strong>
+            </div>
+            <div className="admin-perf-card">
+              <span className="perf-label">SHADOW SIMULATIONS</span>
+              <strong className="perf-val">{data.shadow_count}</strong>
+            </div>
+          </div>
+
+          <h4 style={{ margin: "18px 0 8px", fontSize: "0.875rem", fontWeight: 700 }}>Recent Executed Signals ({data.signals.length})</h4>
+          {data.signals.length > 0 ? (
+            <div className="admin-signals-table-wrap">
+              <table className="report-breakdown">
+                <thead>
+                  <tr>
+                    <th>Signal ID</th>
+                    <th>Side</th>
+                    <th>Entry Band</th>
+                    <th>Status</th>
+                    <th>Result / Lot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.signals.map(s => (
+                    <tr key={s.id}>
+                      <td><code>{s.id}</code></td>
+                      <td><Badge tone={s.direction === "SELL" ? "negative" : "positive"}>{s.direction}</Badge></td>
+                      <td>{s.entry ? `${s.entry[0]} – ${s.entry[1]}` : "–"}</td>
+                      <td><Badge>{s.status}</Badge></td>
+                      <td className={s.result_per_lot > 0 ? "good" : s.result_per_lot < 0 ? "warn" : ""}>
+                        {s.result_per_lot != null ? `$${s.result_per_lot.toFixed(2)}` : "–"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState>No trade records found.</EmptyState>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function AdminSettings({ view }: { view: AdminView | undefined }) {
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [newKey, setNewKey] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -625,18 +1210,6 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
     try { await work(); }
     catch (failure) { setError((failure as Error).message); }
     finally { setBusy(false); }
-  }
-
-  function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const label = new FormData(form).get("label");
-    void action(async () => {
-      const result = await send<{ key: string }>("/api/admin/keys", "POST", { label });
-      setNewKey(result.key);
-      form.reset();
-      await refresh();
-    });
   }
 
   function save(event: FormEvent<HTMLFormElement>) {
@@ -655,29 +1228,12 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
   return <section className="admin-page" id={view} hidden={!view} aria-labelledby="admin-settings-title">
       <h2 id="admin-settings-title">{adminViews.find(([id]) => id === view)?.[1]}</h2>
       {view !== "admin-errors" && error && <p className="warn" role="alert">{error}</p>}
-      {(view === "admin-users" || view === "admin-ai") && message && <p role="status">{message}</p>}
+      {view === "admin-ai" && message && <p role="status">{message}</p>}
       {settings ? <>
-        <section className="panel access-panel" hidden={view !== "admin-users"}>
-          <PanelHeading title="Viewer access" as="h3"><Badge tone="positive">{settings.keys.filter(key => !key.revoked).length} active</Badge></PanelHeading>
-          <form className="access-form inline-form" onSubmit={create}>
-            <label>Key label<input name="label" placeholder="e.g. Viewer name" required maxLength={80} /></label>
-            <button className="primary" disabled={busy}>Create access key</button>
-          </form>
-          {newKey && <div className="issued-key">
-            <label>New access key<input value={newKey} readOnly onFocus={event => event.currentTarget.select()} /></label>
-            <p className="small muted">Copy and share this key privately. It is shown once.</p>
-            <button onClick={() => void action(async () => { await navigator.clipboard.writeText(newKey); setMessage("Access key copied."); })}>Copy key</button>
-          </div>}
-          {settings.keys.length ? <ul className="key-list">{settings.keys.map(key => <li key={key.id}>
-            <span>{key.label}</span>
-            {key.revoked ? <Badge>Revoked</Badge> : <div className="key-actions"><Badge tone="positive">Active</Badge><button className="danger-button" disabled={busy} onClick={() => {
-              if (confirm(`Revoke access for ${key.label}?`)) void action(async () => {
-                await api(`/api/admin/keys?id=${encodeURIComponent(key.id)}`, { method: "DELETE" });
-                await refresh();
-              });
-            }}>Revoke</button></div>}
-          </li>)}</ul> : <EmptyState>No access keys issued.</EmptyState>}
-        </section>
+        <div hidden={view !== "admin-users"}>
+          <AdminUsers settings={settings} refresh={refresh} action={action} busy={busy} />
+        </div>
+
         <section className="panel access-panel" hidden={view !== "admin-ai"}>
           <PanelHeading title="Gemini review" as="h3"><Badge tone={settings.enabled ? "positive" : "neutral"}>{settings.enabled ? "Enabled" : "Disabled"}</Badge></PanelHeading>
           <dl className="model-display">
@@ -694,17 +1250,20 @@ export function AdminSettings({ view }: { view: AdminView | undefined }) {
             <button className="primary" disabled={busy}>Save Gemini settings</button>
           </form>
         </section>
-      <section className="panel access-panel admin-chat" hidden={view !== "admin-ai"}>
-        <div className="panel-heading"><h3>Breaking-news pause</h3>
-          <button type="button" disabled={busy} onClick={() => void action(async () => {
-            await send("/api/admin/pause", "PUT", { paused: !settings.paused });
-            await refresh();
-          })}>{settings.paused ? "Resume entries" : "Pause entries for 1 hour"}</button>
-        </div>
-        <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
-      </section>
-      <div hidden={view !== "admin-ai"}><TelegramPanel action={action} busy={busy} /></div>
-      <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
+
+        <section className="panel access-panel admin-chat" hidden={view !== "admin-ai"}>
+          <div className="panel-heading"><h3>Breaking-news pause</h3>
+            <button type="button" disabled={busy} onClick={() => void action(async () => {
+              await send("/api/admin/pause", "PUT", { paused: !settings.paused });
+              await refresh();
+            })}>{settings.paused ? "Resume entries" : "Pause entries for 1 hour"}</button>
+          </div>
+          <p className="muted">{settings.paused ? "New entries are paused. Filled signals are still tracked." : "Pause new entries during unexpected market events."}</p>
+        </section>
+
+        <div hidden={view !== "admin-ai"}><TelegramPanel action={action} busy={busy} /></div>
+        <div hidden={view !== "admin-chat"}><AdminChat configured={settings.configured} model={settings.model} /></div>
+        <div hidden={view !== "admin-performance"}><AdminPerformance action={action} busy={busy} /></div>
       </> : !error && view !== "admin-errors" && <LoadingState>Loading settings…</LoadingState>}
       {view === "admin-errors" && <BackendLog />}
       {view === "admin-workers" && <WorkerStatus />}

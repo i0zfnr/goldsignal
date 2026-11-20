@@ -20,9 +20,11 @@ const routes = new Set([
   "GET /api/viewer-profile", "PUT /api/viewer-profile",
   "POST /api/push/status", "POST /api/push/test",
   "GET /api/auth/session", "DELETE /api/auth/session", "POST /api/auth/admin", "POST /api/auth/viewer",
-  "GET /api/admin/settings", "POST /api/admin/keys", "DELETE /api/admin/keys", "PUT /api/admin/gemini",
+  "GET /api/admin/settings", "POST /api/admin/keys", "PUT /api/admin/keys", "DELETE /api/admin/keys", "PUT /api/admin/gemini",
   "GET /api/admin/chat", "POST /api/admin/chat",
-  "PUT /api/admin/pause", "GET /api/admin/errors", "GET /api/admin/workers", "POST /api/entry-open",
+  "PUT /api/admin/pause", "GET /api/admin/errors", "DELETE /api/admin/errors",
+  "GET /api/admin/performance", "POST /api/admin/performance/reset",
+  "GET /api/admin/workers", "POST /api/entry-open",
 ]);
 const mime = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",

@@ -219,6 +219,12 @@ def pause_entries(body: Pause, request: Request):
     return {"paused": body.paused}
 
 
+class UpdateKey(BaseModel):
+    id: str
+    label: str = Field(min_length=1, max_length=80)
+    revoked: bool = False
+
+
 @router.post("/api/admin/keys", status_code=201)
 def create_key(body: Invite, request: Request):
     admin(request)
@@ -226,22 +232,43 @@ def create_key(body: Invite, request: Request):
     subject = digest(secret)
     with transaction() as store:
         store.put("access_key", subject, dict(id=subject, label=body.label.strip(), created=utc_now(), revoked=False))
-    return {"key": secret}
+    return {"key": secret, "id": subject, "label": body.label.strip()}
+
+
+@router.put("/api/admin/keys")
+def update_key(body: UpdateKey, request: Request):
+    admin(request)
+    with transaction() as store:
+        grant = store.get("access_key", body.id)
+        if not grant:
+            raise HTTPException(404, "Access key not found.")
+        grant["label"] = body.label.strip()
+        grant["revoked"] = body.revoked
+        store.put("access_key", body.id, grant)
+        if body.revoked:
+            store.delete("push", body.id)
+            for device, subscription in store.items("push"):
+                if subscription.get("owner") == body.id:
+                    store.delete("push", device)
+    return {"updated": True, "key": grant}
 
 
 @router.delete("/api/admin/keys")
-def revoke_key(id: str, request: Request):
+def revoke_key(id: str, request: Request, permanent: bool = False):
     admin(request)
     with transaction() as store:
         grant = store.get("access_key", id)
         if not grant:
             raise HTTPException(404, "Access key not found.")
-        store.put("access_key", id, {**grant, "revoked": True})
+        if permanent:
+            store.delete("access_key", id)
+        else:
+            store.put("access_key", id, {**grant, "revoked": True})
         store.delete("push", id)
         for device, subscription in store.items("push"):
             if subscription.get("owner") == id:
                 store.delete("push", device)
-    return {"revoked": True}
+    return {"revoked": True, "deleted": permanent}
 
 
 @router.put("/api/admin/gemini")

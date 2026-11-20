@@ -95,3 +95,69 @@ def test_telegram_admin_api_endpoints(db, monkeypatch):
         assert cfg2["configured"] is True
         assert cfg2["chat_id"] == "@testchannel"
         assert cfg2["masked_token"].startswith("123456")
+
+
+def test_admin_user_crud_operations(db, monkeypatch):
+    password = "fixture-admin-password"
+    salt = "00112233445566778899aabbccddeeff"
+    monkeypatch.setenv("ADMIN_EMAIL", "fixture@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", f"{salt}:{password_hash(password, salt)}")
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
+
+    with TestClient(app) as operator:
+        operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
+
+        # 1. Create User
+        res = operator.post("/api/admin/keys", json={"label": "VIP Scalper 1"})
+        assert res.status_code == 201
+        data = res.json()
+        key_id = data["id"]
+        secret = data["key"]
+        assert secret.startswith("gs_")
+
+        # 2. Update User Label
+        update_res = operator.put("/api/admin/keys", json={"id": key_id, "label": "VIP Scalper Prime", "revoked": False})
+        assert update_res.status_code == 200
+        assert update_res.json()["key"]["label"] == "VIP Scalper Prime"
+
+        # 3. Toggle Revoke
+        revoke_res = operator.put("/api/admin/keys", json={"id": key_id, "label": "VIP Scalper Prime", "revoked": True})
+        assert revoke_res.status_code == 200
+        assert revoke_res.json()["key"]["revoked"] is True
+
+        # 4. Permanent Delete
+        del_res = operator.delete("/api/admin/keys", params={"id": key_id, "permanent": True})
+        assert del_res.status_code == 200
+        assert del_res.json()["deleted"] is True
+
+
+def test_admin_error_log_and_performance_reset(db, monkeypatch):
+    from goldsignal import diagnostics
+    password = "fixture-admin-password"
+    salt = "00112233445566778899aabbccddeeff"
+    monkeypatch.setenv("ADMIN_EMAIL", "fixture@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", f"{salt}:{password_hash(password, salt)}")
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", Fernet.generate_key().decode())
+
+    with TestClient(app) as operator:
+        operator.post("/api/auth/admin", json={"email": "fixture@example.com", "credential": password})
+
+        # Record test log
+        diagnostics.record("TestWorker", "Test log message")
+        logs_24h = operator.get("/api/admin/errors", params={"timeframe": "24h"}).json()
+        assert len(logs_24h["entries"]) >= 1
+
+        # Clear logs
+        cleared = operator.delete("/api/admin/errors").json()
+        assert cleared["cleared"] is True
+        logs_after = operator.get("/api/admin/errors").json()
+        assert len(logs_after["entries"]) == 0
+
+        # Performance API check and reset
+        perf = operator.get("/api/admin/performance").json()
+        assert "signals_count" in perf
+
+        reset_res = operator.post("/api/admin/performance/reset").json()
+        assert reset_res["reset"] is True
+        assert reset_res["archive_id"].startswith("backup:")
+

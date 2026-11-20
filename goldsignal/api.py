@@ -68,10 +68,65 @@ async def private_responses(request, call_next):
 
 
 @app.get("/api/admin/errors")
-def backend_errors(request: Request):
+def backend_errors(request: Request, timeframe: Literal["all", "7d", "24h"] = "all"):
     admin(request)
     with transaction() as store:
-        return {"entries": store.recent("backend_log", 50)}
+        now = utc_now()
+        limit_time = (now - 86400) if timeframe == "24h" else (now - 7 * 86400) if timeframe == "7d" else 0
+        all_logs = store.recent("backend_log", 200)
+        filtered = [e for e in all_logs if (e.get("time", 0) / 1000) >= limit_time]
+        return {"entries": filtered}
+
+
+@app.delete("/api/admin/errors")
+def clear_backend_errors(request: Request):
+    admin(request)
+    with transaction() as store:
+        for key, _ in list(store.items("backend_log")):
+            store.delete("backend_log", key)
+    return {"cleared": True}
+
+
+@app.get("/api/admin/performance")
+def admin_performance(request: Request):
+    admin(request)
+    with transaction() as store:
+        signals = store.all("signal")
+        shadow = store.all("shadow")
+        fills = [s for s in signals if s.get("fill") is not None]
+        wins = sum(1 for s in fills if (s.get("result_per_lot") or 0) > 0)
+        losses = sum(1 for s in fills if (s.get("result_per_lot") or 0) < 0)
+        total_pnl = sum((s.get("result_per_lot") or 0) for s in fills)
+        return {
+            "signals_count": len(signals),
+            "shadow_count": len(shadow),
+            "fills_count": len(fills),
+            "wins": wins,
+            "losses": losses,
+            "win_rate": round(100 * wins / len(fills), 1) if fills else 0.0,
+            "total_pnl_per_lot": round(total_pnl, 2),
+            "signals": sorted(signals, key=lambda s: s.get("created", 0), reverse=True)[:50],
+        }
+
+
+@app.post("/api/admin/performance/reset")
+def reset_performance(request: Request):
+    admin(request)
+    with transaction() as store:
+        signals = store.all("signal")
+        events = store.all("event")
+        shadow = store.all("shadow")
+        archive_id = f"backup:{int(utc_now())}"
+        store.put("archive_performance", archive_id, {
+            "time": utc_now(), "signals": signals, "events": events, "shadow": shadow
+        })
+        for s in signals:
+            store.delete("signal", s["id"])
+        for e in events:
+            store.delete("event", e["id"])
+        for sh in shadow:
+            store.delete("shadow", sh["id"])
+    return {"reset": True, "archive_id": archive_id}
 
 
 @app.get("/api/admin/workers")
