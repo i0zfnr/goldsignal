@@ -814,7 +814,9 @@ function App({ role, signOut, expired }: {
                 <div className="row-content"><a className="row-title" href={`${page}?signal=${item.id}#signal`}
                   aria-label={`${item.direction} · ${price(item.reference)}`} onClick={event => select(event, item.id)}>{price(item.reference)}</a>
                   <p className="muted small">{item.strategy ?? "M15 baseline"} · {displayTime(item.created)} MYT</p></div>
-                <Badge tone={item.status === "STOPPED" ? "negative" : item.status === "COMPLETED" ? "positive" : "neutral"}>{item.status}</Badge>
+                <Badge tone={item.status === "STOPPED" ? "negative" : (item.status === "COMPLETED" || item.status.includes("SECURED") || item.status.includes("TP")) ? "positive" : "neutral"}>
+                  {item.status.replace("_", " ")}
+                </Badge>
               </li>)}</ul> : <EmptyState icon={<History size={18} />}>No signals saved yet.</EmptyState>}
             <details><summary>Lifecycle and comparison</summary>
               {data?.events.map(event => <p className="small" key={event.id}>{displayTime(event.time)} MYT · {event.kind} · SL {price(event.stop)}{event.note ? ` · ${event.note}` : ""}</p>)}

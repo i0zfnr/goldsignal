@@ -186,9 +186,10 @@ def test_m5_rejection_and_m1_confirmation():
     cand = b2._candidate(zone, rej, trig, dict(now=10700), m5_bars)
     assert cand["direction"] == "SELL"
     assert cand["reference"] == 2648.0
-    assert cand["initial_stop"] == 2654.10
-    assert cand["stop"] == 2654.10
+    assert cand["initial_stop"] == 2656.10
+    assert cand["stop"] == 2656.10
     assert cand["entry"][0] <= cand["reference"] <= cand["entry"][1]
+    assert cand["entry"][1] < cand["initial_stop"]  # Stop loss strictly above all entry prices!
     assert len(cand["targets"]) == 3  # 1.0R, 1.5R, 2.0R (TP1, TP2, TP3)
     # Deduplication ID check:
     assert cand["id"] == f"b2_{zone['id']}_{rej['time']}_SELL"

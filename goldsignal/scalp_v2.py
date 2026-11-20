@@ -18,7 +18,7 @@ PARAMS = dict(
     band=0.25,
     targets=(1.0, 1.5, 2.0),
     hold_seconds=1800,
-    entry_window=300,
+    entry_window=1800,
     zone_ttl=48 * 900,
     max_spread=0.5,
 )
@@ -334,22 +334,26 @@ def calculate_grade(zone, rejection, trigger, snapshot, risk, mtf_aligned=True):
 def _candidate(zone, rejection, trigger, snapshot, m15_closed, mtf_aligned=True):
     ref = trigger["close"]
     if zone["direction"] == "SELL":
-        stop = round(rejection["high"] + PARAMS["stop_buffer"], 2)
+        natural_high = max(rejection["high"], zone["top"])
+        stop = round(natural_high + PARAMS["stop_buffer"], 2)
         risk = round(stop - ref, 2)
-        if risk <= 0:
+        if risk <= 0.50:
             risk = 2.0
             stop = round(ref + risk, 2)
-        # Actionable scalp entry band: covers from zone top down to ref - 1.20
-        band = sorted([round(ref - max(1.20, risk * 0.25), 2), round(max(zone["top"], ref + 0.80), 2)])
+        band_high = round(min(stop - 0.20, max(ref + 0.80, ref + risk * 0.25)), 2)
+        band_low = round(ref - max(1.20, risk * 0.25), 2)
+        band = sorted([band_low, band_high])
         sign = -1
     else:
-        stop = round(rejection["low"] - PARAMS["stop_buffer"], 2)
+        natural_low = min(rejection["low"], zone["bottom"])
+        stop = round(natural_low - PARAMS["stop_buffer"], 2)
         risk = round(ref - stop, 2)
-        if risk <= 0:
+        if risk <= 0.50:
             risk = 2.0
             stop = round(ref - risk, 2)
-        # Actionable scalp entry band: covers from zone bottom up to ref + 1.20
-        band = sorted([round(min(zone["bottom"], ref - 0.80), 2), round(ref + max(1.20, risk * 0.25), 2)])
+        band_low = round(max(stop + 0.20, min(ref - 0.80, ref - risk * 0.25)), 2)
+        band_high = round(ref + max(1.20, risk * 0.25), 2)
+        band = sorted([band_low, band_high])
         sign = 1
     target = [round(ref + sign * risk * multiple, 2) for multiple in PARAMS["targets"]]
     symbol = snapshot.get("symbol", SYMBOL)

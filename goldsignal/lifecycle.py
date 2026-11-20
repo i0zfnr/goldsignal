@@ -33,7 +33,10 @@ def advance(signal, quote, now, can_fill, costs):
                 signal["stop"] = signal["reference"] if index == 0 else signal["targets"][0]
             events.append((f"TP{index + 1}", signal["stop"]))
     if events and events[0][0] in ("STOPPED", "TIMED_OUT"):
-        signal["status"] = events[0][0]
+        if signal.get("hits", 0) >= 1:
+            signal["status"] = f"TP{signal['hits']}_SECURED" if events[0][0] == "STOPPED" else "COMPLETED"
+        else:
+            signal["status"] = events[0][0]
         signal["exits"].append(dict(time=now, price=price, kind=signal["status"], fraction=sum(fractions[signal["hits"]:])))
     if signal["hits"] == 3:
         signal["status"] = "COMPLETED"

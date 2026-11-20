@@ -185,14 +185,14 @@ def performance(request: Request, response: Response, period: Literal["day", "we
     for signal in signals:
         exits = signal.get("exits", [])
         fill = signal.get("fill")
-        if fill is None or not exits or signal["status"] not in ("COMPLETED", "STOPPED", "TIMED_OUT"):
+        if fill is None or not exits or signal["status"] not in ("COMPLETED", "STOPPED", "TIMED_OUT", "TP1_SECURED", "TP2_SECURED"):
             continue
         closed = exits[-1]["time"]
         if not in_period(closed):
             continue
         direction = 1 if signal["direction"] == "BUY" else -1
         pips = round(sum(direction * (exit["price"] - fill) * exit["fraction"] / 0.10 for exit in exits), 2)
-        result = "wins" if pips > 0 else "losses" if pips < 0 else "flat"
+        result = "wins" if (pips > 0 or signal.get("hits", 0) >= 1 or signal.get("status", "").startswith("TP")) else "losses" if pips < 0 else "flat"
         local = datetime.fromtimestamp(closed, MY)
         label = local.strftime("%Y-%m" if period == "all" else "%Y-%m-%d")
         bucket = buckets.setdefault(label, dict(label=label, wins=0, losses=0, flat=0, pips=0.0))

@@ -146,12 +146,15 @@ def format_event(signal: dict, name: str, ts: float) -> str:
         pips = round(abs(tp_price - fill) / 0.10, 1)
         pips_str = f" (+{pips:.1f} pips)"
 
+    hits = signal.get("hits", 0)
     if name == "TP1":
         action_note = "🛡️ <i>Stop Loss automatically moved to Break-Even (Entry Reference). Zero risk active!</i>"
     elif name == "TP2":
         action_note = "🔒 <i>Stop Loss trailed to TP1 level to lock in profit!</i>"
     elif name == "TP3":
         action_note = "🏆 <i>All profit targets reached! Full position closed in maximum gain!</i>"
+    elif "SECURED" in name or (name == "STOPPED" and hits >= 1):
+        action_note = f"🏆 <i>Price reached trailing stop. Profit on TP{hits} is locked and secured!</i>"
     elif name in ("STOPPED", "SL"):
         action_note = "🛑 <i>Position stopped out at protective stop loss.</i>"
     elif name == "FILLED":
@@ -159,11 +162,17 @@ def format_event(signal: dict, name: str, ts: float) -> str:
     else:
         action_note = ""
 
-    status_icon = "🏆" if name == "TP3" else "🎯" if "TP" in name else "🛑" if "SL" in name or name == "STOPPED" else "⚡"
+    is_win_exit = name in ("TP3", "TP1_SECURED", "TP2_SECURED") or (name == "STOPPED" and hits >= 1)
+    status_icon = "🏆" if is_win_exit else "🎯" if "TP" in name else "🛑" if "SL" in name or name == "STOPPED" else "⚡"
     fill_info = f" (Fill: <code>{fill:.2f}</code>)" if fill else ""
 
+    if name == "STOPPED" and hits >= 1:
+        display_name = f"TP{hits} SECURED"
+    else:
+        display_name = name.replace("_", " ")
+
     lines = [
-        f"{status_icon} <b>GOLDSIGNAL · {name} HIT{pips_str}!</b>",
+        f"{status_icon} <b>GOLDSIGNAL · {display_name} HIT{pips_str}!</b>",
         f"<b>{symbol} {direction}</b>{fill_info}",
         f"━━━━━━━━━━━━━━━━━━",
         f"📌 <b>Trailing Stop:</b> <code>{stop:.2f}</code>",

@@ -314,10 +314,24 @@ def process(source, step, cursor, calendar, revision):
         mark_division(workers, "ren", "live" if ren_data.get("current_fvg") else "idle", reason=ren_data["status"], at=now)
         mark_division(workers, "kai", "live" if kai_data.get("matches") else "idle", reason=f"K={kai_data.get('matches', 0)} matches · Win {kai_data.get('win_rate', 0)}%", at=now)
 
+        active_signal = next((s for s in store.all("signal") if s.get("status") in ("PENDING", "FILLED")), None)
+        if active_signal:
+            scalp = None
+            if b_analysis:
+                b_analysis["candidate"] = None
+                b_analysis["active_trade"] = active_signal
+                b_analysis["next_step"] = f"LOCKED · {active_signal['direction']} ACTIVE"
+                b_analysis["reason"] = f"Trade active (TP {active_signal.get('hits', 0)}/3) · Trailing stop at {active_signal.get('stop', 0):.2f}"
+                scalp_scan = b_analysis["reason"]
+
         mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
                          reason=scan.get("reason"), at=now)
-        mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
-                         reason=scalp_scan, at=now)
+        if active_signal:
+            mark_lane_worker(workers, "B", "kaze", "live",
+                             reason=f"Locked on active {active_signal['direction']} · TP {active_signal.get('hits', 0)}/3", at=now)
+        else:
+            mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
+                             reason=scalp_scan, at=now)
         mark_lane_worker(workers, "C", "kaze", "setup" if range_cand else "waiting",
                          reason=range_scan, at=now)
 
@@ -463,6 +477,11 @@ def process(source, step, cursor, calendar, revision):
             for stage in ("mizu", "nanao", "hikari"):
                 if workers["lanes"][lane]["stages"][stage]["status"] == "idle":
                     mark_lane_worker(workers, lane, stage, "waiting", reason="No candidate", at=now)
+        if active_signal:
+            mark_lane_worker(workers, "B", "mizu", "live",
+                             reason=f"Risk locked · SL at {active_signal.get('stop', 0):.2f} · TP {active_signal.get('hits', 0)}/3", at=now)
+            mark_lane_worker(workers, "B", "hikari", "live",
+                             reason=f"Published · Active {active_signal['direction']} trade", at=now)
         latency_ms = round((time.perf_counter() - cycle_start) * 1000, 1)
         feed_reason = f"Feed {'live' if not snapshot.get('closed') else 'closed'} · {latency_ms}ms"
         mark_worker(workers, "idle", reason=feed_reason, at=now, name="kuro")
