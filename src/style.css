@@ -611,35 +611,43 @@ footer a { color: inherit; }
   background: color-mix(in srgb, var(--sell) 16%, transparent); border-color: var(--sell); color: var(--sell);
 }
 
-/* 5. Operator Desk Badges — professional human silhouette roster */
+/* 5. Operator avatars — colorful abstract characters with eyes */
 .crew-avatar-frame { position: relative; width: 60px; height: 60px; margin: 4px 0 6px; }
 .operator-badge { display: flex; justify-content: center; }
-.operator-avatar {
-  --op: var(--muted);
-  position: relative; width: 100%; height: 100%; border-radius: 50%;
-  display: grid; place-items: center; overflow: hidden;
-  background: radial-gradient(circle at 32% 24%, color-mix(in srgb, var(--op) 38%, var(--panel)), color-mix(in srgb, var(--op) 14%, var(--panel)) 70%, var(--panel));
-  border: 1.5px solid color-mix(in srgb, var(--op) 55%, var(--line));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 4px 12px rgba(0, 0, 0, .22);
+.operator-avatar { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
+.op-shape {
+  position: absolute; inset: 0; background: var(--op);
+  transform: rotate(var(--rot, 0deg));
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .28);
 }
-.operator-person {
-  width: 72%; height: 72%;
-  fill: color-mix(in srgb, var(--op) 82%, var(--text));
-  opacity: .92;
+.op-circle .op-shape { border-radius: 50%; }
+.op-squircle .op-shape { border-radius: 34%; }
+.op-roundedsquare .op-shape { border-radius: 26%; }
+.op-blob .op-shape { border-radius: 58% 42% 47% 53% / 52% 55% 45% 48%; }
+.op-drop .op-shape { border-radius: 52% 52% 52% 8%; transform: rotate(calc(var(--rot, 0deg) - 45deg)); }
+.op-triangle .op-shape { clip-path: polygon(50% 4%, 97% 96%, 3% 96%); border-radius: 0; }
+
+.op-eyes {
+  position: absolute; top: 42%; left: 50%;
+  display: flex; gap: 4px;
+  transform: translate(-50%, -50%) rotate(var(--eye-rot, 0deg));
 }
+.op-eyes i { width: 6px; height: 13px; border-radius: 999px; background: #ffffff; box-shadow: 0 1px 2px rgba(0, 0, 0, .18); }
+.op-eyes i.is-dot { width: 8px; height: 8px; border-radius: 50%; }
+.op-triangle .op-eyes { top: 58%; }
+.op-drop .op-eyes { top: 38%; }
+
 .operator-status-dot {
-  position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px;
+  position: absolute; right: 1px; bottom: 1px; width: 11px; height: 11px;
   border-radius: 50%; background: var(--muted); border: 2px solid var(--panel);
   box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
 }
 
-/* Status tones layered on identity color */
-.tone-live .operator-avatar { box-shadow: 0 0 0 1px var(--buy), 0 4px 14px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .08); }
+.tone-live .op-shape { box-shadow: 0 0 0 2px color-mix(in srgb, var(--op) 50%, transparent), 0 5px 16px rgba(0, 0, 0, .32); }
 .tone-live .operator-status-dot { background: var(--buy); box-shadow: 0 0 0 2px var(--panel), 0 0 8px var(--buy); }
 .tone-warn .operator-status-dot { background: var(--gold); }
-.tone-error .operator-avatar { border-color: var(--sell); }
 .tone-error .operator-status-dot { background: var(--sell); }
-.tone-idle .operator-avatar { opacity: .8; }
+.tone-idle .operator-avatar { opacity: .82; }
 
 @media (prefers-reduced-motion: no-preference) {
   .tone-live .operator-status-dot { animation: operator-pulse 1.8s ease-out infinite; }

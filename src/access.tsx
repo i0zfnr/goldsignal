@@ -428,29 +428,42 @@ function shortReason(value: string | null) {
   return value.length > 34 ? `${value.slice(0, 33)}…` : value;
 }
 
-const OPERATOR_COLORS: Record<string, string> = {
-  kuro: "#38bdf8",
-  kaze: "#f5a524",
-  mizu: "#60a5fa",
-  nanao: "#34d399",
-  hayate: "#fb923c",
-  ryu: "#f87171",
-  shinra: "#a78bfa",
-  taka: "#fbbf24",
-  ren: "#2dd4bf",
-  kai: "#4ade80",
-  hikari: "#f472b6",
+type OpStyle = {
+  color: string;
+  shape: "circle" | "squircle" | "roundedsquare" | "blob" | "drop" | "triangle";
+  rot?: number;
+  eyes?: "pill" | "dot";
+  eyeRot?: number;
+};
+
+const OPERATOR_STYLE: Record<string, OpStyle> = {
+  kuro: { color: "#2b2f3a", shape: "circle", eyes: "pill", eyeRot: -20 },
+  kaze: { color: "#f5a524", shape: "blob", eyes: "pill", eyeRot: 4 },
+  mizu: { color: "#2f6bff", shape: "squircle", rot: 8, eyes: "dot" },
+  nanao: { color: "#0fbf9f", shape: "squircle", rot: -8, eyes: "pill" },
+  hayate: { color: "#ff6a00", shape: "circle", eyes: "pill", eyeRot: 16 },
+  ryu: { color: "#ef4444", shape: "roundedsquare", rot: 12, eyes: "pill", eyeRot: -6 },
+  shinra: { color: "#8b5cf6", shape: "roundedsquare", rot: -12, eyes: "pill", eyeRot: -14 },
+  taka: { color: "#fbbf24", shape: "blob", eyes: "dot" },
+  ren: { color: "#6b7280", shape: "drop", eyes: "dot" },
+  kai: { color: "#22c55e", shape: "blob", eyes: "pill", eyeRot: 8 },
+  hikari: { color: "#ec4899", shape: "triangle", eyes: "pill" },
 };
 
 function OperatorAvatar({ name, tone }: { name: string; tone: string }) {
-  const color = OPERATOR_COLORS[name] ?? "#94a3b8";
+  const style = OPERATOR_STYLE[name] ?? { color: "#94a3b8", shape: "circle" as const, eyes: "pill" as const };
+  const dot = style.eyes === "dot" ? "is-dot" : "";
   return (
     <div className={`operator-badge tone-${tone}`}>
-      <div className="operator-avatar" style={{ "--op": color } as CSSProperties}>
-        <svg viewBox="0 0 48 48" className="operator-person" aria-hidden="true">
-          <circle cx="24" cy="17.5" r="7.5" />
-          <path d="M9.5 42c0-8.4 6.6-13.2 14.5-13.2S38.5 33.6 38.5 42Z" />
-        </svg>
+      <div
+        className={`operator-avatar op-${style.shape}`}
+        style={{ "--op": style.color, "--rot": `${style.rot ?? 0}deg`, "--eye-rot": `${style.eyeRot ?? 0}deg` } as CSSProperties}
+      >
+        <span className="op-shape" />
+        <span className="op-eyes">
+          <i className={dot} />
+          <i className={dot} />
+        </span>
         <span className="operator-status-dot" />
       </div>
     </div>
