@@ -1,14 +1,15 @@
 """Shinra Quantitative Research Division: Pattern, FVG & Graph Intelligence.
 
-Directs deep 1,000-candle research with dedicated co-workers:
+Directs deep configurable-candle research with dedicated co-workers:
 - Shinra: Chief of Quantitative Research (Synthesizes pattern edge & win expectancy)
 - Taka: Geometric Pattern Scanner (Wyckoff Springs, Upthrusts, Liquidity Sweeps)
 - Ren: FVG & Imbalance Profiler (Fair Value Gaps, Liquidity Voids)
-- Kai: Historical Match Engine (1,000-candle Euclidean feature search & probability)
+- Kai: Historical Match Engine (deep Euclidean feature search & probability)
+- Sora: Session volatility regime analyst (London / New York expansion detection)
 """
 
 from statistics import median
-from .strategy import PATTERN_HISTORY
+from .strategy import PATTERN_HISTORY, PATTERN_MATCHES
 
 
 def scan_geometric_patterns(bars):
@@ -105,7 +106,7 @@ def scan_fvgs(bars, price):
 
 
 def match_historical_patterns(bars, sign):
-    """Kai: 1,000-candle Euclidean match search & win probability."""
+    """Kai: deep Euclidean match search & win probability."""
     closed = bars[-(PATTERN_HISTORY + 9):]
     if len(closed) < 9:
         return {"history": max(0, len(closed) - 1), "matches": 0, "win_rate": None, "next4_bps": None, "avg_pips": None}
@@ -139,7 +140,7 @@ def match_historical_patterns(bars, sign):
         pips_move = round(sign * (closed[i + 4]["close"] - closed[i]["close"]) / 0.10, 1)
         comparisons.append((distance, move_bps, pips_move))
 
-    matches = sorted(comparisons)[:5]
+    matches = sorted(comparisons)[:PATTERN_MATCHES]
     if not matches:
         return {"history": min(PATTERN_HISTORY, newest), "matches": 0, "win_rate": None, "next4_bps": None, "avg_pips": None}
 

@@ -1,10 +1,13 @@
+import os
 from collections import defaultdict
 from decimal import Decimal, ROUND_FLOOR
 from statistics import median
 
 from .config import MAX_SPREAD, QUOTE_FUTURE_TOLERANCE, STALE_SECONDS, SWING, TREND, ZONE_WIDTH, SYMBOL, session
 
-PATTERN_HISTORY = 1000
+DEEP_RESEARCH = os.getenv("DEEP_RESEARCH", "1") == "1"
+PATTERN_HISTORY = int(os.getenv("PATTERN_HISTORY", "5000" if DEEP_RESEARCH else "1000"))
+PATTERN_MATCHES = int(os.getenv("PATTERN_MATCHES", "20" if DEEP_RESEARCH else "5"))
 
 
 def compare_pattern(closed, sign):

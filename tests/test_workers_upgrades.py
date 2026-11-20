@@ -171,6 +171,7 @@ def test_hayate_and_ryu_workers_telemetry(db):
     assert "taka" in state["division"]
     assert "ren" in state["division"]
     assert "kai" in state["division"]
+    assert "sora" in state["division"]
     workers.mark(state, "live", reason="Parallel compute 3 lanes", at=100, name="hayate")
     workers.mark(state, "idle", reason="0 queued", at=100, name="ryu")
     workers.mark(state, "live", reason="1,000 candles scanned", at=100, name="shinra")
@@ -180,7 +181,7 @@ def test_hayate_and_ryu_workers_telemetry(db):
     assert snap["hayate"]["age_seconds"] == 5.0
     assert snap["ryu"]["status"] == "idle"
     assert snap["shinra"]["label"] == "Shinra"
-    assert len(snap["division"]) == 3
+    assert len(snap["division"]) == 4
     taka = next(s for s in snap["division"] if s["name"] == "taka")
     assert taka["status"] == "live"
     assert taka["reason"] == "Wyckoff sweep"

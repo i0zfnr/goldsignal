@@ -448,6 +448,7 @@ const OPERATOR_STYLE: Record<string, OpStyle> = {
   ren: { color: "#6b7280", shape: "drop", eyes: "dot" },
   kai: { color: "#22c55e", shape: "blob", eyes: "pill", eyeRot: 8 },
   hikari: { color: "#ec4899", shape: "triangle", eyes: "pill" },
+  sora: { color: "#0ea5e9", shape: "squircle", rot: 12, eyes: "dot" },
 };
 
 function OperatorAvatar({ name, tone }: { name: string; tone: string }) {

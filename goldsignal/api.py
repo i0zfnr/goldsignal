@@ -160,6 +160,7 @@ def get_id(request, response):
 
 
 def metrics(signals):
+    signals = [s for s in signals if s.get("status") != "DAILY_WATCH"]
     fills = [s for s in signals if s["fill"] is not None]
     return dict(entries=len(signals), fills=len(fills), tp1=sum(s["hits"] >= 1 for s in fills),
                 result=None if any(s["result_per_lot"] is None for s in fills) else

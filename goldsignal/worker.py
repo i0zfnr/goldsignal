@@ -13,18 +13,21 @@ from filelock import FileLock
 from . import news
 from .access import MODEL, PRO_MODEL, encryption
 from .alerts import add_alert, send_pending
-from .config import DB, ENTRY_TTL, MODE, REVIEW, STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now
+from .config import (AI_BEST_EFFORT, DAILY_SETUP, DB, ENTRY_TTL, MODE, REVIEW,
+                     SESSION_CONFIDENCE_FILTER, SESSION_MIN_EXPECTANCY, SESSION_MIN_GRADE,
+                     STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now)
 from .diagnostics import record
 from .gemini_budget import GeminiPaused, pause_after_429, reserve
-from .lifecycle import advance
+from .lifecycle import advance, day as day_key
 from .market import MT5, Replay
 from .pattern_research import conduct_research
 from .range_fade import asian_range_candidate
 from .scalp import scalp_candidate
 from .scalp_v2 import analyze as analyze_v2
+from .session_intel import AGGRESSIVE_SESSIONS, analyze as session_intel
 from .sessions import label as session_label
 from .store import migrate, transaction
-from .strategy import gate, levels, setup
+from .strategy import PATTERN_HISTORY, gate, levels, setup
 from .telegram import dispatch_telegram, format_entry, format_event, format_headsup, format_zone_touch, ryu_telemetry, send_telegram
 from .workers import blank as blank_workers, mark as mark_worker, mark_division, mark_lane as mark_lane_worker
 from . import demo_account
@@ -32,8 +35,63 @@ from . import demo_account
 log = logging.getLogger(__name__)
 DEMO = MODE == "demo"
 GEMINI_RETRY_DELAYS = (3, 8)
+GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "12"))
 ENTRY_LIMIT_PER_HOUR = 2
 ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
+GRADE_RANK = {"B": 0, "B+": 1, "A": 2, "A+": 3}
+AI_UNAVAILABLE_TEXT = ("unavailable", "paused", "cap reached", "cooling down", "waiting for gemini")
+
+
+def ai_unavailable(model):
+    return bool(model) and any(text in str(model[1] or "").lower() for text in AI_UNAVAILABLE_TEXT)
+
+
+def daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, now):
+    today = day_key(now)
+    key = f"daily:{today}"
+    if store.get("signal", key):
+        return None
+    signals = store.all("signal")
+    if any(item.get("status") in ("PENDING", "FILLED") for item in signals):
+        return None
+    if any(item.get("created") and day_key(item["created"]) == today
+           and item.get("status") != "DAILY_WATCH" for item in signals):
+        return None
+    bias = (b_analysis or {}).get("primary_bias") or {}
+    direction = {"bearish": "SELL", "bullish": "BUY"}.get(bias.get("direction"))
+    zone = None
+    if b_analysis and direction:
+        zone = b_analysis.get("nearest_sell") if direction == "SELL" else b_analysis.get("nearest_buy")
+    if not direction or not zone:
+        return None
+
+    ref = round((zone["top"] + zone["bottom"]) / 2, 2)
+    sign = -1 if direction == "SELL" else 1
+    entry = [round(zone["bottom"], 2), round(zone["top"], 2)]
+    stop = round((zone["top"] + 2.0) if sign < 0 else (zone["bottom"] - 2.0), 2)
+    targets = [round(ref + sign * step, 2) for step in (3.0, 6.0, 10.0)]
+    edge = (research_res.get("shinra") or {}).get("edge_score")
+    grade = "A" if (edge or 0) >= 60 else "B"
+    item = dict(
+        id=key, symbol=SYMBOL, direction=direction, created=now, expiry=now + 21600,
+        strategy="Daily bias · labelled watch", grade=grade,
+        entry=entry, initial_stop=stop, stop=stop, reference=ref, targets=targets,
+        fill=None, status="DAILY_WATCH", hits=0, exits=[],
+        evidence={"grade": grade,
+                  "reason": f"Daily {session_res['regime']} bias from {b_analysis.get('mtf', 'M15')} structure · "
+                            f"research edge {edge}%. Labelled watch only — no execution."},
+        session=session_label(now), quality="labelled-watch",
+    )
+    store.put("signal", key, item)
+    store.put("alert", f"shared:{key}:DAILY", dict(
+        id=f"shared:{key}:DAILY", profile="shared", signal=key, kind="DAILY", time=now,
+        valid_until=item["expiry"], title=f"{SYMBOL} Daily {direction} setup (watch only)",
+        body=f"Entry {entry[0]:.2f}-{entry[1]:.2f} · SL {stop:.2f} · Research edge {edge}%",
+        url=f"/?signal={key}#signal", delivery="sent", attempts=1))
+    dispatch_telegram(f"DAILY SETUP · {SYMBOL} {direction}\n"
+                      f"Entry {entry[0]:.2f}-{entry[1]:.2f} · SL {stop:.2f}\n"
+                      f"Research edge {edge}%. Labelled watch only — no execution.")
+    return item
 hayate_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="hayate-compute")
 
 
@@ -105,7 +163,7 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
         reserve(MODEL)
         response = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
-            headers={"x-goog-api-key": key}, timeout=3.8,
+            headers={"x-goog-api-key": key}, timeout=GEMINI_TIMEOUT_SECONDS,
             json={"contents": [{"parts": [{"text": (
                 'Role: fast deterministic entry reviewer. Confirm only if side, entry, stop, targets are consistent. '
                 'Output JSON only with keys decision (CONFIRM, WAIT, REJECT) and reason (max 10 words).'
@@ -124,6 +182,8 @@ def gemini_review(settings, candidate, snapshot, calendar, retrying=False):
         reason = result["reason"]
         if result["decision"] not in ("CONFIRM", "WAIT", "REJECT") or not isinstance(reason, str) or not reason.strip():
             raise ValueError("Invalid Gemini decision")
+        log.info("Gemini review succeeded (%s): %s", MODEL, result["decision"])
+        record("Gemini review", f"{MODEL} confirmed {result['decision']} for double-check.", level="info")
         if retrying:
             record("Gemini review", f"Retry returned a valid review ({result['decision']}).", level="info")
         return result["decision"], " ".join(reason.split()[:12])[:160]
@@ -249,9 +309,10 @@ def process(source, step, cursor, calendar, revision):
                 b_settings = store.get("settings", "strategy_b") or {}
                 b_mtf = b_settings.get("mtf") or STRATEGY_B_MTF
                 b_frames = {f: recent(f, 250) for f in ("M1", "M5", "M30", "H1")}
-                b_bars_dict = {b["time"]: b for b in store.chart(limit=250)}
+                research_limit = PATTERN_HISTORY + 10
+                b_bars_dict = {b["time"]: b for b in store.chart(limit=research_limit)}
                 b_bars_dict.update({b["time"]: b for b in snapshot.get("bars", [])})
-                b_bars = [b_bars_dict[t] for t in sorted(b_bars_dict)[-250:]]
+                b_bars = [b_bars_dict[t] for t in sorted(b_bars_dict)[-research_limit:]]
                 b_snapshot = {**snapshot, "bars": b_bars, "frames": b_frames}
             else:
                 b_snapshot = snapshot
@@ -283,6 +344,7 @@ def process(source, step, cursor, calendar, revision):
         fut_b = hayate_executor.submit(compute_lane_b)
         fut_c = hayate_executor.submit(compute_lane_c)
         fut_shinra = hayate_executor.submit(conduct_research, b_snapshot.get("bars", []), quote.get("bid", 0.0), "SELL")
+        fut_sora = hayate_executor.submit(session_intel, b_snapshot.get("bars", []), now, "SELL")
 
         candidate, scan = fut_a.result()
         snapshot["scan"] = scan
@@ -302,6 +364,8 @@ def process(source, step, cursor, calendar, revision):
 
         range_cand, range_scan = fut_c.result()
         research_res = fut_shinra.result()
+        session_res = fut_sora.result()
+        research_res["session_intel"] = session_res
         shinra_data = research_res["shinra"]
         taka_data = research_res["taka"]
         ren_data = research_res["ren"]
@@ -309,10 +373,11 @@ def process(source, step, cursor, calendar, revision):
 
         hayate_ms = round((time.perf_counter() - hayate_start) * 1000, 1)
 
-        mark_worker(workers, "live", reason=f"{shinra_data['candles_analyzed']} candles · {shinra_data['edge_score']}% Expectancy", at=now, name="shinra")
+        mark_worker(workers, "live", reason=f"{shinra_data['candles_analyzed']} candles · {shinra_data['edge_score']}% Expectancy · {session_res['regime']}", at=now, name="shinra")
         mark_division(workers, "taka", "live" if taka_data.get("signal") in ("BUY", "SELL") else "idle", reason=f"{taka_data['pattern']} ({taka_data.get('signal', 'NEUT')})", at=now)
         mark_division(workers, "ren", "live" if ren_data.get("current_fvg") else "idle", reason=ren_data["status"], at=now)
         mark_division(workers, "kai", "live" if kai_data.get("matches") else "idle", reason=f"K={kai_data.get('matches', 0)} matches · Win {kai_data.get('win_rate', 0)}%", at=now)
+        mark_division(workers, "sora", "live" if session_res.get("aggressive") else "idle", reason=session_res["summary"], at=now)
 
         active_signal = next((s for s in store.all("signal") if s.get("status") in ("PENDING", "FILLED")), None)
         if active_signal:
@@ -369,6 +434,31 @@ def process(source, step, cursor, calendar, revision):
             item.setdefault("session", session_label(snapshot["now"]))
             lane = "C" if item.get("id", "").startswith("c_") else ("B" if item.get("strategy") else "A")
             item.setdefault("lane", lane)
+        if SESSION_CONFIDENCE_FILTER and active_signal is None:
+            min_rank = GRADE_RANK.get(SESSION_MIN_GRADE.upper(), 2)
+            edge = research_res["shinra"].get("edge_score") or 0
+            filtered = []
+            for item in pending:
+                if not str(item.get("strategy") or "").startswith("B"):
+                    filtered.append(item)
+                    continue
+                aggressive = item.get("session") in AGGRESSIVE_SESSIONS or session_res.get("regime") == "EXPANSION"
+                if not aggressive:
+                    filtered.append(item)
+                    continue
+                grade_ok = GRADE_RANK.get(str(item.get("grade") or "").upper(), -1) >= min_rank
+                aligned = session_intel(b_snapshot.get("bars", []), snapshot["now"], item["direction"]).get("aligned", False)
+                if grade_ok and edge >= SESSION_MIN_EXPECTANCY and aligned:
+                    filtered.append(item)
+                    continue
+                reason = (f"Held back in {item.get('session') or session_res['regime']}: "
+                          f"grade {item.get('grade') or 'n/a'}, research edge {edge}%, "
+                          f"flow {'aligned' if aligned else 'against'} {item['direction']}.")
+                if item.get("strategy"):
+                    scalp_scan = reason
+                scan["reason"] = reason
+                mark_lane_worker(workers, item.get("lane", "A"), "kaze", "waiting", reason=reason, at=now)
+            pending = filtered
         if demo_account.enabled():
             for item in pending:
                 if item.get("strategy") and not store.get("demo_candidate", item["id"]):
@@ -435,7 +525,11 @@ def process(source, step, cursor, calendar, revision):
         for item in pending:
             key = item["id"]
             model = reviews[key]
-            review_gate = model or (("WAIT", "Waiting for Gemini review") if configured else None)
+            fallback_ai = AI_BEST_EFFORT and configured and ai_unavailable(model)
+            effective_model = None if fallback_ai else model
+            review_gate = effective_model or (("WAIT", "Waiting for Gemini review") if configured and not AI_BEST_EFFORT else None)
+            if fallback_ai:
+                log.info("Gemini unavailable. Publishing from rules only.")
             decision, reason = (("WAIT", scan["reason"]) if stopped else
                                 evaluate(item, quote, now, calendar, review_gate))
             baseline, baseline_reason = gate(item, quote, now)
@@ -454,14 +548,14 @@ def process(source, step, cursor, calendar, revision):
             if item.get("strategy"):
                 scalp_scan = f"{decision}: {reason}"
             mark_lane_worker(workers, item.get("lane", "A"), "mizu", decision, reason=reason, at=now)
-            if not stopped and baseline == "CONFIRM" and (not model or model[0] == "CONFIRM") and not store.get("shadow", key):
+            if not stopped and baseline == "CONFIRM" and (not effective_model or effective_model[0] == "CONFIRM") and not store.get("shadow", key):
                 store.put("shadow", key, dict(item, exits=[], created=now))
             if decision == "CONFIRM":
                 publish_time = snapshot["now"] if DEMO else utc_now()
                 if evaluate(item, quote, publish_time, calendar, review_gate)[0] == "CONFIRM":
                     item.update(created=publish_time)
-                    if model:
-                        item["review"] = {"provider": provider, "reason": model[1]}
+                    if effective_model:
+                        item["review"] = {"provider": provider, "reason": effective_model[1]}
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
@@ -470,6 +564,8 @@ def process(source, step, cursor, calendar, revision):
                                      reason=f"{item['direction']} {key}", at=now)
                     if item.get("strategy"):
                         scalp_scan = f"{item['direction']} scalp signal published."
+        if DAILY_SETUP:
+            daily_watch_setup(store, snapshot, b_analysis, research_res, session_res, now)
         store.save_bars(snapshot["bars"], revision)
         for frame, bars in snapshot.get("frames", {}).items():
             store.save_bars(bars, revision, frame)
@@ -490,7 +586,7 @@ def process(source, step, cursor, calendar, revision):
         ryu_status = "live" if (now - last_sent_at) < 15 else "idle"
         ryu_desc = f"Zero-latency dispatch · {sent_count} sent" if sent_count else "Zero-latency dispatch · standby"
         mark_worker(workers, ryu_status, reason=ryu_desc, at=now, name="ryu")
-        mark_worker(workers, "live", reason=f"{shinra_data['candles_analyzed']} candles · {shinra_data['edge_score']}% Expectancy", at=now, name="shinra")
+        mark_worker(workers, "live", reason=f"{shinra_data['candles_analyzed']} candles · {shinra_data['edge_score']}% Expectancy · {session_res['regime']}", at=now, name="shinra")
         state_payload = dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,

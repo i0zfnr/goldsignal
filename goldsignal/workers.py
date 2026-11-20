@@ -22,6 +22,7 @@ SHINRA_STAFF = {
     "taka": ("Taka", "Geometric pattern scanner"),
     "ren": ("Ren", "FVG & imbalance profiler"),
     "kai": ("Kai", "Historical match engine"),
+    "sora": ("Sora", "Session volatility analyst"),
 }
 
 

@@ -427,10 +427,10 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
         </div>
       </details>
 
-      {/* 4. Shinra Quantitative Intelligence & 1,000-Pattern Match */}
+      {/* 4. Shinra Quantitative Intelligence & deep pattern match */}
       {analysis.pattern_research && (
         <details className="insight-details" open>
-          <summary>Shinra Pattern Intelligence (1,000 Candles)</summary>
+          <summary>Shinra Pattern Intelligence ({analysis.pattern_research.shinra.candles_analyzed.toLocaleString()} Candles)</summary>
           <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
             <div className="compact-zone-item" style={{ background: "rgba(168, 85, 247, 0.1)", borderLeft: "3px solid #a855f7" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -441,6 +441,17 @@ function BAnalysisPanel({ analysis, displayTime, price }: {
                 {analysis.pattern_research.taka.pattern} · {analysis.pattern_research.ren.status}
               </p>
             </div>
+            {analysis.pattern_research.session_intel && (
+              <div className="compact-zone-item" style={{ background: "rgba(14, 165, 233, 0.1)", borderLeft: "3px solid #0ea5e9" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span><strong>Sora Session Regime:</strong> {analysis.pattern_research.session_intel.regime}</span>
+                  <span className="badge small badge-accent">{analysis.pattern_research.session_intel.volatility_ratio ?? "–"}x</span>
+                </div>
+                <p className="small muted" style={{ marginTop: 3, marginBottom: 0 }}>
+                  {analysis.pattern_research.session_intel.summary}
+                </p>
+              </div>
+            )}
           </div>
         </details>
       )}

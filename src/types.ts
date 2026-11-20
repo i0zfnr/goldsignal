@@ -37,6 +37,8 @@ export type PatternResearch = {
   taka: { pattern: string; confidence: string; signal: string | null; level?: number; description?: string };
   ren: { active_fvgs: any[]; current_fvg: any | null; status: string };
   kai: { history: number; matches: number; wins?: number; win_rate: number | null; next4_bps: number | null; avg_pips: number | null };
+  session_intel?: { session: string | null; regime: string; volatility_ratio: number | null;
+    aligned: boolean; aggressive: boolean; summary: string };
 };
 
 export type BAnalysis = {

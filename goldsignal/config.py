@@ -38,6 +38,11 @@ SWING = int(os.getenv("SWING_BARS", "2"))
 ZONE_WIDTH = float(os.getenv("ZONE_WIDTH", "0.8"))
 TREND = int(os.getenv("TREND_BARS", "4"))
 REVIEW = os.getenv("SIGNAL_REVIEW_MODE", "rules")
+SESSION_CONFIDENCE_FILTER = os.getenv("SESSION_CONFIDENCE_FILTER", "1") == "1"
+SESSION_MIN_GRADE = os.getenv("SESSION_MIN_GRADE", "A")
+SESSION_MIN_EXPECTANCY = float(os.getenv("SESSION_MIN_EXPECTANCY", "60"))
+DAILY_SETUP = os.getenv("DAILY_SETUP", "1") == "1"
+AI_BEST_EFFORT = os.getenv("AI_BEST_EFFORT", "1") == "1"
 STRATEGY_B_VERSION = os.getenv("STRATEGY_B_VERSION", "katana_v1")
 STRATEGY_B_MTF = os.getenv("STRATEGY_B_MTF", "M15")
 

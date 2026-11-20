@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from goldsignal import alerts, chat, config, diagnostics, gemini_budget, news, store, worker
+from goldsignal import alerts, chat, config, diagnostics, gemini_budget, news, store, strategy, worker
 from goldsignal.api import app
 from goldsignal.access import password_hash
 from goldsignal.lifecycle import advance
@@ -76,7 +76,7 @@ def test_pattern_rsi8_uses_actual_sample():
     bars = [dict(time=i * 900, open=3700 + i, high=3702 + i, low=3699 + i, close=3701 + i)
             for i in range(1100)]
     pattern = compare_pattern(bars, 1)
-    assert pattern["history"] == 1000 and pattern["rsi8"] == 100
+    assert pattern["history"] == min(strategy.PATTERN_HISTORY, 1099) and pattern["rsi8"] == 100
     assert pattern["matches"] == 5 and pattern["next4_bps"] > 0
 
 
@@ -89,6 +89,7 @@ def test_gemini_caps_and_invalid_review_hold(db, monkeypatch, model, token_cap, 
     cipher = Fernet(key)
     monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", key.decode())
     monkeypatch.setattr(worker, "MODEL", model)
+    monkeypatch.setattr(worker, "AI_BEST_EFFORT", False)
     calls = []
 
     class Reply:
@@ -140,6 +141,7 @@ def test_gemini_503_retries_only_while_entry_is_valid(db, monkeypatch):
         })
 
     monkeypatch.setattr(worker.httpx, "post", post)
+    monkeypatch.setattr(worker, "AI_BEST_EFFORT", False)
     snapshot = sample()
 
     class Source:
@@ -168,6 +170,31 @@ def test_gemini_503_retries_only_while_entry_is_valid(db, monkeypatch):
         recovered = data.recent("backend_log", 1)[0]
         assert recovered["level"] == "info"
         assert recovered["message"] == "Retry returned a valid review (CONFIRM)."
+
+
+def test_ai_best_effort_publishes_when_gemini_unavailable(db, monkeypatch):
+    import httpx
+
+    key = Fernet.generate_key()
+    monkeypatch.setenv("GOLDSIGNAL_SECRET_KEY", key.decode())
+    with store.transaction() as data:
+        data.put("ai", "gemini", {"enabled": True, "ciphertext": Fernet(key).encrypt(b"test").decode()})
+
+    def post(url, **kwargs):
+        return httpx.Response(503, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(worker.httpx, "post", post)
+    monkeypatch.setattr(worker, "AI_BEST_EFFORT", True)
+    snapshot = sample()
+
+    class Source:
+        def read(self, *args):
+            return snapshot.copy()
+
+    worker.process(Source(), 0, None, {}, 1)
+    with store.transaction() as data:
+        assert len(data.all("signal")) == 1
+        assert "unavailable" in str(data.all("candidate")[0]["model"]).lower()
 
 
 def test_gemini_shared_rolling_cap_and_daily_reset(db, monkeypatch):
