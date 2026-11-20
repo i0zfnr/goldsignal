@@ -24,7 +24,7 @@ from .scalp_v2 import analyze as analyze_v2
 from .sessions import label as session_label
 from .store import migrate, transaction
 from .strategy import gate, levels, setup
-from .telegram import format_entry, format_event, format_headsup, format_zone_touch, send_telegram
+from .telegram import dispatch_telegram, format_entry, format_event, format_headsup, format_zone_touch, ryu_telemetry, send_telegram
 from .workers import blank as blank_workers, mark as mark_worker, mark_lane as mark_lane_worker
 from . import demo_account
 
@@ -33,6 +33,7 @@ DEMO = MODE == "demo"
 GEMINI_RETRY_DELAYS = (3, 8)
 ENTRY_LIMIT_PER_HOUR = 2
 ENTRY_LIMIT_REASON = "Entry limit reached (2 signals per rolling hour)."
+hayate_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="hayate-compute")
 
 
 def failure_message(exc):
@@ -202,7 +203,7 @@ def record_event(store, signal, name, ts):
         if subscription:
             add_alert(store, recipient, signal, name, ts)
     if name != "ENTRY":
-        send_telegram(format_event(signal, name, ts))
+        dispatch_telegram(format_event(signal, name, ts))
 
 
 def process(source, step, cursor, calendar, revision):
@@ -219,8 +220,9 @@ def process(source, step, cursor, calendar, revision):
     if DEMO:
         calendar = news.refresh(True, now, calendar)
     workers = blank_workers()
-    mark_worker(workers, "running", at=now)
-    candidate = new_candidate(snapshot)
+    mark_worker(workers, "running", at=now, name="kuro")
+    mark_worker(workers, "running", at=now, name="hayate")
+    mark_worker(workers, "idle", at=now, name="ryu")
     scan = snapshot.get("scan", {})
     frames = snapshot.get("frames", {})
     b_analysis = None
@@ -250,21 +252,59 @@ def process(source, step, cursor, calendar, revision):
                 b_bars_dict.update({b["time"]: b for b in snapshot.get("bars", [])})
                 b_bars = [b_bars_dict[t] for t in sorted(b_bars_dict)[-250:]]
                 b_snapshot = {**snapshot, "bars": b_bars, "frames": b_frames}
-                b_analysis = analyze_v2(b_snapshot, mtf=b_mtf)
-                scalp = b_analysis.get("candidate")
-                scalp_scan = b_analysis.get("reason") or "Waiting for setup"
             else:
-                scalp, scalp_scan = scalp_candidate(snapshot, recent("M5", 12), recent("M1", 12))
+                b_snapshot = snapshot
+                b_mtf = STRATEGY_B_MTF
+        else:
+            m5_recent = []
+            b_snapshot = snapshot
+            b_mtf = STRATEGY_B_MTF
+
+        # Parallel Hayate Compute Engine
+        hayate_start = time.perf_counter()
+
+        def compute_lane_a():
+            return new_candidate(snapshot), snapshot.get("scan", {})
+
+        def compute_lane_b():
+            if "M5" in frames and "M1" in frames:
+                if STRATEGY_B_VERSION == "katana_v1" and "H1" in frames:
+                    return analyze_v2(b_snapshot, mtf=b_mtf), "katana"
+                return scalp_candidate(snapshot, recent("M5", 12), recent("M1", 12)), "legacy"
+            return None, "empty"
+
+        def compute_lane_c():
+            if "M5" in frames and "M1" in frames:
+                return asian_range_candidate(snapshot, m5_recent, snapshot.get("bars", []))
+            return None, "Waiting for Asian session window."
+
+        fut_a = hayate_executor.submit(compute_lane_a)
+        fut_b = hayate_executor.submit(compute_lane_b)
+        fut_c = hayate_executor.submit(compute_lane_c)
+
+        candidate, scan = fut_a.result()
+        snapshot["scan"] = scan
+
+        b_res, b_mode = fut_b.result()
+        if b_mode == "katana" and b_res:
+            b_analysis = b_res
+            scalp = b_analysis.get("candidate")
+            scalp_scan = b_analysis.get("reason") or "Waiting for setup"
+        elif b_mode == "legacy" and b_res:
+            scalp, scalp_scan = b_res
+            b_analysis = None
+        else:
+            scalp = None
+            scalp_scan = "Waiting for the M5 and M1 feed."
+            b_analysis = None
+
+        range_cand, range_scan = fut_c.result()
+        hayate_ms = round((time.perf_counter() - hayate_start) * 1000, 1)
+
         mark_lane_worker(workers, "A", "kaze", "setup" if candidate else "waiting",
                          reason=scan.get("reason"), at=now)
         mark_lane_worker(workers, "B", "kaze", "setup" if scalp else "waiting",
                          reason=scalp_scan, at=now)
-
-        # Strategy C: Asian Range Fade
-        range_cand = None
-        range_scan = "Waiting for Asian session window."
-        if "M5" in frames and "M1" in frames:
-            range_cand, range_scan = asian_range_candidate(snapshot, m5_recent, snapshot.get("bars", []))
         mark_lane_worker(workers, "C", "kaze", "setup" if range_cand else "waiting",
                          reason=range_scan, at=now)
 
@@ -280,7 +320,7 @@ def process(source, step, cursor, calendar, revision):
                     body=f"Price ({quote['bid']:.2f}) entered M15 {in_z['direction']} zone. Watching for reversal scalp entry!",
                     url="/#signal", delivery="sent", attempts=1,
                 ))
-                send_telegram(format_zone_touch(in_z["direction"], in_z, quote["bid"], now))
+                dispatch_telegram(format_zone_touch(in_z["direction"], in_z, quote["bid"], now))
 
         # Early Heads-up when M5 rejection occurs before M1 confirmation:
         if b_analysis and b_analysis.get("rejection") and b_analysis.get("next_step") == "WAITING FOR M1 CONFIRMATION":
@@ -295,7 +335,7 @@ def process(source, step, cursor, calendar, revision):
                     body=f"M5 closed outside zone {zone.get('bottom', 0):.2f}–{zone.get('top', 0):.2f}. Waiting for M1 confirmation break.",
                     url="/#signal", delivery="sent", attempts=1,
                 ))
-                send_telegram(format_headsup(zone.get("direction", "SELL"), zone, rej, now))
+                dispatch_telegram(format_headsup(zone.get("direction", "SELL"), zone, rej, now))
 
         pending = [item for item in (candidate, scalp, range_cand) if item and not store.get("signal", item["id"])]
         for item in pending:
@@ -398,7 +438,7 @@ def process(source, step, cursor, calendar, revision):
                     store.put("signal", key, item)
                     recent_entries.append(publish_time)
                     record_event(store, item, "ENTRY", publish_time)
-                    send_telegram(format_entry(item, publish_time))
+                    dispatch_telegram(format_entry(item, publish_time))
                     mark_lane_worker(workers, item.get("lane", "A"), "hikari", "published",
                                      reason=f"{item['direction']} {key}", at=now)
                     if item.get("strategy"):
@@ -412,7 +452,12 @@ def process(source, step, cursor, calendar, revision):
                     mark_lane_worker(workers, lane, stage, "waiting", reason="No candidate", at=now)
         latency_ms = round((time.perf_counter() - cycle_start) * 1000, 1)
         feed_reason = f"Feed {'live' if not snapshot.get('closed') else 'closed'} · {latency_ms}ms"
-        mark_worker(workers, "idle", reason=feed_reason, at=now)
+        mark_worker(workers, "idle", reason=feed_reason, at=now, name="kuro")
+        mark_worker(workers, "live", reason=f"Parallel 3 lanes · {hayate_ms}ms", at=now, name="hayate")
+        sent_count, last_sent_at = ryu_telemetry()
+        ryu_status = "live" if (now - last_sent_at) < 15 else "idle"
+        ryu_desc = f"Zero-latency dispatch · {sent_count} sent" if sent_count else "Zero-latency dispatch · standby"
+        mark_worker(workers, ryu_status, reason=ryu_desc, at=now, name="ryu")
         state_payload = dict(now=snapshot["now"], quote=quote, spec=snapshot["spec"],
                   closed=snapshot["closed"], cursor=snapshot["cursor"], step=step + 1,
                   revision=revision, heartbeat=utc_now(), calendar=calendar, scan=scan, scalp_scan=scalp_scan,

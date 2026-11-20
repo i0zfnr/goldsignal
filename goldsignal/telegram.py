@@ -2,6 +2,7 @@
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import httpx
@@ -10,6 +11,25 @@ from .store import transaction
 
 log = logging.getLogger(__name__)
 MY = ZoneInfo("Asia/Kuala_Lumpur")
+
+dispatch_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ryu-dispatcher")
+_ryu_stats = {"count": 0, "last_at": 0.0}
+
+
+def dispatch_telegram(text: str):
+    if not text:
+        return None
+    _ryu_stats["count"] += 1
+    _ryu_stats["last_at"] = datetime.now().timestamp()
+    try:
+        return dispatch_pool.submit(send_telegram, text)
+    except Exception as exc:
+        log.warning("Ryu dispatch failed: %s", exc)
+        return None
+
+
+def ryu_telemetry():
+    return _ryu_stats["count"], _ryu_stats["last_at"]
 
 
 def _config():

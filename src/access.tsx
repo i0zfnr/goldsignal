@@ -406,7 +406,10 @@ export const adminViews = [
 type WorkerRow = { name: string; label: string; role: string; status: string; reason: string | null; age_seconds: number | null };
 type WorkerLane = { id: string; label: string; stages: WorkerRow[] };
 type WorkerReport = {
-  kuro: WorkerRow; lanes: WorkerLane[]; heartbeat_age: number | null; error: string | null; mode: string;
+  kuro: WorkerRow;
+  hayate?: WorkerRow;
+  ryu?: WorkerRow;
+  lanes: WorkerLane[]; heartbeat_age: number | null; error: string | null; mode: string;
   symbol: string; revision: number; quote_age: number | null; spec_age: number | null;
   closed: boolean; scan?: string | null; scalp_scan?: string | null;
 };
@@ -534,6 +537,62 @@ function CyberAvatar({ name, tone }: { name: string; tone: string }) {
     );
   }
 
+  if (name === "hayate") {
+    return (
+      <div className={`cyber-avatar avatar-hayate ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="hayate-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#451a03" />
+              <stop offset="50%" stopColor="#78350f" />
+              <stop offset="100%" stopColor="#18181b" />
+            </linearGradient>
+            <linearGradient id="hayate-plasma" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fef08a" />
+              <stop offset="50%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#d97706" />
+            </linearGradient>
+          </defs>
+          <polygon points="32,4 44,16 58,20 48,36 50,56 32,48 14,56 16,36 6,20 20,16" fill="url(#hayate-metal)" stroke="#f59e0b" strokeWidth="1.5" />
+          <polygon points="32,10 40,22 48,34 32,40 16,34 24,22" fill="#09090b" stroke="#fbbf24" strokeWidth="1" />
+          <path d="M20 25 L44 25 L38 32 L26 32 Z" fill="url(#hayate-plasma)" className={isLive ? "avatar-scan-bar" : ""} />
+          <circle cx="32" cy="22" r="3" fill="#ffffff" className={isLive ? "pulse-dot" : ""} />
+          <line x1="20" y1="46" x2="14" y2="58" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+          <line x1="44" y1="46" x2="50" y2="58" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (name === "ryu") {
+    return (
+      <div className={`cyber-avatar avatar-ryu ${tone}`}>
+        <svg viewBox="0 0 64 64" className="cyber-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="ryu-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#7f1d1d" />
+              <stop offset="60%" stopColor="#450a0a" />
+              <stop offset="100%" stopColor="#0a0505" />
+            </linearGradient>
+            <linearGradient id="ryu-laser" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#f87171" />
+              <stop offset="50%" stopColor="#ef4444" />
+              <stop offset="100%" stopColor="#dc2626" />
+            </linearGradient>
+          </defs>
+          <polygon points="32,4 52,14 60,34 50,56 32,60 14,56 4,34 12,14" fill="url(#ryu-metal)" stroke="#ef4444" strokeWidth="1.5" />
+          <polygon points="26,16 38,16 44,28 32,40 20,28" fill="#180505" stroke="#f87171" strokeWidth="1" />
+          <polygon points="12,18 20,8 26,18" fill="#dc2626" />
+          <polygon points="52,18 44,8 38,18" fill="#dc2626" />
+          <line x1="16" y1="30" x2="48" y2="30" stroke="url(#ryu-laser)" strokeWidth="3" strokeLinecap="round" className={isLive ? "avatar-scan-bar" : ""} />
+          <circle cx="24" cy="30" r="2.5" fill="#ffffff" />
+          <circle cx="40" cy="30" r="2.5" fill="#ffffff" />
+          <polygon points="32,44 38,52 26,52" fill="#ef4444" />
+        </svg>
+      </div>
+    );
+  }
+
   // hikari
   return (
     <div className={`cyber-avatar avatar-hikari ${tone}`}>
@@ -631,15 +690,17 @@ function WorkerStatus() {
     {error && <p className="warn" role="alert">{error}</p>}
     {!report && !error && <LoadingState>Loading worker status…</LoadingState>}
     {report && <>
-      {/* 1. Master Kuro Core Hub */}
+      {/* 1. Master Command Center & High-Speed Core Squadron */}
       <div className="kuro-hub-card">
         <div className="kuro-hub-avatar-area">
           <CrewCard row={report.kuro} isCore />
+          {report.hayate && <CrewCard row={report.hayate} isCore />}
+          {report.ryu && <CrewCard row={report.ryu} isCore />}
         </div>
         <div className="kuro-hub-body">
           <div className="kuro-hub-header">
-            <span className="hub-tag">MASTER ORCHESTRATOR</span>
-            <span className="hub-subhead">Unified MetaTrader 5 Feed & Lane Telemetry</span>
+            <span className="hub-tag">CORE SPEED SQUADRON</span>
+            <span className="hub-subhead">Kuro (Feed) · Hayate (Parallel Compute) · Ryu (Zero-Latency Dispatch)</span>
           </div>
           <div className="kuro-hud-grid">
             <div className="kuro-hud-stat">

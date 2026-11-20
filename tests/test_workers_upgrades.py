@@ -161,3 +161,17 @@ def test_admin_error_log_and_performance_reset(db, monkeypatch):
         assert reset_res["reset"] is True
         assert reset_res["archive_id"].startswith("backup:")
 
+
+def test_hayate_and_ryu_workers_telemetry(db):
+    from goldsignal import workers
+    state = workers.blank()
+    assert state["hayate"]["label"] == "Hayate"
+    assert state["ryu"]["label"] == "Ryu"
+    workers.mark(state, "live", reason="Parallel compute 3 lanes", at=100, name="hayate")
+    workers.mark(state, "idle", reason="0 queued", at=100, name="ryu")
+    snap = workers.snapshot(state, now=105, heartbeat=104)
+    assert snap["hayate"]["status"] == "live"
+    assert snap["hayate"]["age_seconds"] == 5.0
+    assert snap["ryu"]["status"] == "idle"
+    assert snap["ryu"]["label"] == "Ryu"
+

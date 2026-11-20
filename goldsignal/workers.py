@@ -12,6 +12,11 @@ LANES = (
     ("B", "Strategy B · Liquidity scalp"),
     ("C", "Strategy C · Asian range fade"),
 )
+CORE_ROLES = {
+    "kuro": ("Kuro", "Feed and orchestration"),
+    "hayate": ("Hayate", "Parallel compute engine"),
+    "ryu": ("Ryu", "Zero-latency dispatcher"),
+}
 
 
 def _row(name, label, role):
@@ -19,15 +24,20 @@ def _row(name, label, role):
 
 
 def blank():
-    state = {"kuro": _row("kuro", "Kuro", "Feed and orchestration"), "lanes": {}}
+    state = {
+        "kuro": _row("kuro", "Kuro", "Feed and orchestration"),
+        "hayate": _row("hayate", "Hayate", "Parallel compute engine"),
+        "ryu": _row("ryu", "Ryu", "Zero-latency dispatcher"),
+        "lanes": {},
+    }
     for lane, label in LANES:
         state["lanes"][lane] = dict(id=lane, label=label, stages={
             stage: _row(stage, *STAGE_ROLES[stage]) for stage in STAGES})
     return state
 
 
-def mark(workers, status, reason=None, at=None):
-    row = workers.get("kuro")
+def mark(workers, status, reason=None, at=None, name="kuro"):
+    row = workers.get(name)
     if row is not None:
         row.update(status=status, reason=reason, at=at)
     return workers
@@ -48,11 +58,19 @@ def _aged(row, now):
 def snapshot(workers, now, heartbeat, error=None):
     state = workers or blank()
     kuro = state.get("kuro", _row("kuro", "Kuro", "Feed and orchestration"))
+    hayate = state.get("hayate", _row("hayate", "Hayate", "Parallel compute engine"))
+    ryu = state.get("ryu", _row("ryu", "Ryu", "Zero-latency dispatcher"))
     lanes = []
     for lane, label in LANES:
         stages = state.get("lanes", {}).get(lane, {}).get("stages", {})
         lanes.append({"id": lane, "label": label,
                       "stages": [_aged(stages.get(stage, _row(stage, *STAGE_ROLES[stage])), now)
                                  for stage in STAGES]})
-    return {"kuro": _aged(kuro, now), "lanes": lanes,
-            "heartbeat_age": round(now - heartbeat, 1) if heartbeat else None, "error": error}
+    return {
+        "kuro": _aged(kuro, now),
+        "hayate": _aged(hayate, now),
+        "ryu": _aged(ryu, now),
+        "lanes": lanes,
+        "heartbeat_age": round(now - heartbeat, 1) if heartbeat else None,
+        "error": error
+    }
