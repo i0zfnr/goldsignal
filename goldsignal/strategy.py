@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_FLOOR
 from statistics import median
 
-from .config import MAX_SPREAD, STALE_SECONDS, SWING, TREND, ZONE_WIDTH, SYMBOL, session
+from .config import MAX_SPREAD, QUOTE_FUTURE_TOLERANCE, STALE_SECONDS, SWING, TREND, ZONE_WIDTH, SYMBOL, session
 
 PATTERN_HISTORY = 1000
 
@@ -118,7 +118,7 @@ def executable(signal, quote, exit_side=False):
 def gate(signal, quote, now, news_reason=None, *, window=None):
     if now >= signal["expiry"] or not (window if window is not None else session(now))["open"]:
         return "REJECT", "Entry session or candidate expired"
-    if not quote or not quote["available"] or not -2 <= now - quote["time"] <= STALE_SECONDS:
+    if not quote or not quote["available"] or not -QUOTE_FUTURE_TOLERANCE <= now - quote["time"] <= STALE_SECONDS:
         return "WAIT", "Broker quote unavailable or stale"
     if quote.get("permission") not in (None, "BOTH", signal["direction"]):
         return "REJECT", "Broker symbol does not allow this direction"

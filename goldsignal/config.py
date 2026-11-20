@@ -28,6 +28,7 @@ FRIDAY_CLOSE = time.fromisoformat(os.getenv("BROKER_FRIDAY_CLOSE", "17:00"))
 SUNDAY_OPEN = time.fromisoformat(os.getenv("BROKER_SUNDAY_OPEN", "18:00"))
 MAX_SPREAD = float(os.getenv("MAX_SPREAD", "0.5"))
 STALE_SECONDS = int(os.getenv("QUOTE_MAX_AGE", "20"))
+QUOTE_FUTURE_TOLERANCE = int(os.getenv("QUOTE_FUTURE_TOLERANCE_SECONDS", "10"))
 ENTRY_TTL = int(os.getenv("ENTRY_TTL_MIN", "30")) * 60
 HOLD_TTL = int(os.getenv("HOLD_TTL_MIN", "180")) * 60
 NEWS_BEFORE = int(os.getenv("NEWS_BEFORE_MIN", "20")) * 60

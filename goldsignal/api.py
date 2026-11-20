@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
-from .config import MARKET_SESSIONS, MODE, MY, STALE_SECONDS, STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now
+from .config import MARKET_SESSIONS, MODE, MY, QUOTE_FUTURE_TOLERANCE, STALE_SECONDS, STRATEGY_B_MTF, STRATEGY_B_VERSION, SYMBOL, session, utc_now
 from .news import manual_pause, restriction
 from .store import migrate, transaction
 from .access import admin, identity, router
@@ -253,7 +253,7 @@ def dashboard(request: Request, response: Response, after: int | None = None, si
         now = state.get("now", wall) if demo else wall
         quote = state.get("quote")
         stale = (not quote or wall - state.get("heartbeat", 0) > 30 or state.get("error")
-                 or not -2 <= now - quote["time"] <= STALE_SECONDS or not quote["available"])
+                 or not -QUOTE_FUTURE_TOLERANCE <= now - quote["time"] <= STALE_SECONDS or not quote["available"])
         status = "STALE" if state.get("error") or wall - state.get("heartbeat", 0) > 30 else (
             "MARKET CLOSED" if state.get("closed") else "STALE" if stale else "DEMO" if demo else "LIVE"
         )
