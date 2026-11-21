@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Goldsignal — XAUUSD Terminal",
-  "short_name": "Goldsignal",
-  "description": "Gold trading signal terminal: XAUUSD M15 entries, live levels, risk tools and performance.",
+  "name": "Xeniex — XAUUSD Terminal",
+  "short_name": "Xeniex",
+  "description": "XAUUSD trading signal terminal: M15 entries, live levels, risk tools and performance.",
   "lang": "en",
   "dir": "ltr",
   "start_url": "/",

@@ -1,6 +1,6 @@
-﻿# Goldsignal
+﻿# Xeniex
 
-Goldsignal monitors XAUUSD M15, reviews closed-candle setups and tracks simulated execution. The local replay uses synthetic candles, ordered bid/ask ticks and a mock USD calendar. The default rules path and replay use zero paid API calls and require no provider credentials.
+Xeniex monitors XAUUSD M15, reviews closed-candle setups and tracks simulated execution. The local replay uses synthetic candles, ordered bid/ask ticks and a mock USD calendar. The default rules path and replay use zero paid API calls and require no provider credentials.
 
 ## Run the Windows demo
 

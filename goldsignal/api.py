@@ -222,7 +222,7 @@ def get_id(request, response):
     if actor:
         return actor["id"]
     if MODE != "demo" or os.getenv("ADMIN_PASSWORD_HASH"):
-        raise HTTPException(401, "Sign in to use Goldsignal.")
+        raise HTTPException(401, "Sign in to use Xeniex.")
     key = request.cookies.get(COOKIE, "")
     if len(key) != 32 or any(c not in "0123456789abcdef" for c in key):
         key = secrets.token_hex(16)
@@ -612,7 +612,7 @@ def test_telegram(request: Request):
     from .telegram import send_telegram
     now_str = datetime.fromtimestamp(utc_now(), MY).strftime("%d %b %Y, %H:%M:%S")
     msg = (
-        f"🤖 <b>GOLDSIGNAL · TELEGRAM TEST</b>\n"
+        f"🤖 <b>XENIEX · TELEGRAM TEST</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"✅ Telegram channel alerts are connected!\n"
         f"🕒 Time: {now_str} MYT\n"

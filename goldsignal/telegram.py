@@ -1,4 +1,4 @@
-"""Instant Telegram channel & group delivery for GoldSignal."""
+"""Instant Telegram channel & group delivery for Xeniex."""
 
 import logging
 import os
@@ -97,7 +97,7 @@ def format_entry(signal: dict, now: float) -> str:
     tp_str = " · ".join(f"TP{i+1} <b>{p:.2f}</b>" for i, p in enumerate(targets[:3]))
 
     return (
-        f"{icon} <b>GOLDSIGNAL · {symbol}</b>\n"
+        f"{icon} <b>XENIEX · {symbol}</b>\n"
         f"⚡ <b>{direction} · ENTRY SIGNAL [{grade}]</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🏆 <b>Confidence Grade:</b> <code>{grade}</code> {grade_stars}\n"
@@ -117,7 +117,7 @@ def format_zone_touch(direction: str, zone: dict, price: float, now: float) -> s
     icon = "🔴" if is_sell else "🟢"
     zone_type = "SUPPLY ENTRY ZONE" if is_sell else "DEMAND ENTRY ZONE"
     return (
-        f"🔔 <b>GOLDSIGNAL · PRICE IN ENTRY ZONE</b>\n"
+        f"🔔 <b>XENIEX · PRICE IN ENTRY ZONE</b>\n"
         f"{icon} <b>XAUUSD · M15 {zone_type}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"📍 <b>Entry Zone:</b> <code>{zone.get('bottom', 0):.2f} – {zone.get('top', 0):.2f}</code>\n"
@@ -170,7 +170,7 @@ def format_event(signal: dict, name: str, ts: float) -> str:
         display_name = name.replace("_", " ")
 
     lines = [
-        f"{status_icon} <b>GOLDSIGNAL · SIGNAL UPDATE · {display_name} HIT{pips_str}!</b>",
+        f"{status_icon} <b>XENIEX · SIGNAL UPDATE · {display_name} HIT{pips_str}!</b>",
         f"<b>{symbol} {direction}</b>{fill_info}",
         f"━━━━━━━━━━━━━━━━━━",
         f"📌 <b>Trailing Stop:</b> <code>{stop:.2f}</code>",

@@ -100,7 +100,7 @@ export function Chart({
       series.applyOptions({ upColor, downColor, wickUpColor: upColor, wickDownColor: downColor });
       setPalette(v => v + 1);
     }
-    window.addEventListener("goldsignal-theme", updateTheme);
+    window.addEventListener("xeniex-theme", updateTheme);
 
     let animation = 0;
     function positionElements() {
@@ -198,7 +198,7 @@ export function Chart({
 
     animation = requestAnimationFrame(positionElements);
     return () => {
-      window.removeEventListener("goldsignal-theme", updateTheme);
+      window.removeEventListener("xeniex-theme", updateTheme);
       cancelAnimationFrame(animation);
       chart.remove();
       state.current = null;

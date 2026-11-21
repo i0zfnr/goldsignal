@@ -55,7 +55,7 @@ def queue_test(store, recipient, now):
     if previous and (previous["delivery"] == "queued" or now - previous["time"] < 30):
         return
     store.put("alert", key, dict(id=key, profile=recipient, signal=None, kind="TEST", time=now,
-                                valid_until=now + 120, title="Goldsignal test notification",
+                                valid_until=now + 120, title="Xeniex test notification",
                                 body="Notifications are working on this device.", url="/#alerts",
                                 delivery="queued", attempts=0))
 

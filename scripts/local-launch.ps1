@@ -59,13 +59,13 @@ function Wait-Api([int]$seconds = 30) {
 
 switch ($Action) {
   "stop" {
-    Write-Step "Stopping Goldsignal..."
+    Write-Step "Stopping Xeniex..."
     $targets = @()
     $targets += @(Get-PythonProcs "goldsignal\.worker")
     $targets += @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
       Where-Object { $_.CommandLine -match "uvicorn goldsignal\.api:app" })
     foreach ($p in $targets) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
-    Write-Host "Goldsignal stopped." -ForegroundColor Green
+    Write-Host "Xeniex stopped." -ForegroundColor Green
   }
   "status" {
     $worker = @(Get-PythonProcs "goldsignal\.worker").Count
@@ -80,7 +80,7 @@ switch ($Action) {
     & $PSCommandPath -Action start
   }
   default {
-    Write-Step "Preparing Goldsignal..."
+    Write-Step "Preparing Xeniex..."
 
     if (-not (Test-Path $Python)) {
       $base = Get-Command python -ErrorAction SilentlyContinue
@@ -129,9 +129,9 @@ switch ($Action) {
       Start-Sleep -Milliseconds 600
       if (-not $NoBrowser) { Start-Process "http://127.0.0.1:8011" }
       Write-Host ""
-      Write-Host "Goldsignal is running at http://127.0.0.1:8011" -ForegroundColor Green
+      Write-Host "Xeniex is running at http://127.0.0.1:8011" -ForegroundColor Green
       Write-Host "Logs: $Logs" -ForegroundColor DarkGray
-      Write-Host "To stop, run Stop Goldsignal.bat" -ForegroundColor DarkGray
+      Write-Host "To stop, run Stop Xeniex.bat" -ForegroundColor DarkGray
     } else {
       Write-Host "Web server did not open port 8011. Check logs in $Logs" -ForegroundColor Red
       exit 1

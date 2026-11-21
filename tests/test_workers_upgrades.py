@@ -26,7 +26,7 @@ def test_telegram_message_formatters():
     }
     # Entry formatting
     text = telegram.format_entry(signal, 1795100000)
-    assert "GOLDSIGNAL · XAUUSD.vx" in text
+    assert "XENIEX · XAUUSD.vx" in text
     assert "SELL · ENTRY SIGNAL" in text
     assert "3718.28 – 3723.67" in text
     assert "3726.10" in text

@@ -43,7 +43,7 @@ function send<T>(path: string, method: string, value: unknown) {
 
 function AccessHeader({ adminShortcut = false }: { adminShortcut?: boolean }) {
   return <header className="site-header"><div className="header-inner">
-    <a className="wordmark" href="/"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+    <a className="wordmark" href="/"><span className="brand-logo" aria-hidden="true"><img src="/app-icon-192.png" alt="" /></span> Xeniex</a>
     {adminShortcut && <a className="admin-shortcut" href="/admin" aria-label="Admin sign-in"><span>Admin sign-in</span></a>}
     <div className="toolbar-actions"><InstallButton /><ThemeToggle /></div>
   </div></header>;
@@ -69,7 +69,7 @@ function LoginPage({ isAdmin, complete }: { isAdmin: boolean; complete: (role: R
   return <><AccessHeader adminShortcut={!isAdmin} />
     <main className="access-page login-layout">
       <section className="panel access-panel" aria-labelledby="login-title">
-        <h1 id="login-title">{isAdmin ? "Admin sign-in" : "Sign in to Goldsignal"}</h1>
+        <h1 id="login-title">{isAdmin ? "Admin sign-in" : "Sign in to Xeniex"}</h1>
         <p className="muted">{isAdmin ? "Manage user access and Gemini review." : "Enter the access key your admin gave you."}</p>
         <form className="access-form" onSubmit={submit}>
           {isAdmin && <label>Email address<input name="email" type="email" required autoComplete="username" maxLength={254} /></label>}
@@ -175,7 +175,7 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
         <div className="chat-header-info">
           <div className="chat-avatar-ai"><Sparkles size={18} /></div>
           <div>
-            <h3 id="ai-chat-title" className="chat-title">GoldSignal AI Copilot</h3>
+            <h3 id="ai-chat-title" className="chat-title">Xeniex AI Copilot</h3>
             <span className="chat-telemetry-badge">
               <span className="telemetry-online-dot" /> Connected to live market telemetry
             </span>
@@ -203,7 +203,7 @@ function AdminChat({ configured, model }: { configured: boolean; model: string }
                   )}
                   <div className={`chat-bubble ${isUser ? "user-bubble" : "ai-bubble"}`}>
                     <div className="chat-bubble-author">
-                      <span>{isUser ? "You" : "GoldSignal AI"}</span>
+                      <span>{isUser ? "You" : "Xeniex AI"}</span>
                       {!isUser && (
                         <button
                           type="button"
@@ -1061,7 +1061,7 @@ function AdminPerformance({ action, busy }: { action: (w: () => Promise<void>) =
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `goldsignal-performance-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `xeniex-performance-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }

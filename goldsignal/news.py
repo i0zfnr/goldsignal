@@ -39,7 +39,7 @@ def event(source, title, ts, url, **values):
 
 
 def download(url):
-    result = httpx.get(url, timeout=6, follow_redirects=True, headers={"User-Agent": "Goldsignal/1.0"})
+    result = httpx.get(url, timeout=6, follow_redirects=True, headers={"User-Agent": "Xeniex/1.0"})
     result.raise_for_status()
     return result.content
 

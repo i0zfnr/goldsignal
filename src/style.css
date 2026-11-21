@@ -150,6 +150,21 @@ details p { margin: 4px 0 8px; }
 .brand-mark i { width: 4px; border-radius: 1px; background: var(--gold-ink); height: 45%; }
 .brand-mark i:nth-child(2) { height: 70%; }
 .brand-mark i:nth-child(3) { height: 100%; }
+
+.brand-logo {
+  display: inline-block;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--gold);
+}
+.brand-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .toolbar-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
 .toolbar-icon {
   display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0;

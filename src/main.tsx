@@ -506,7 +506,7 @@ function Alerts({ data }: { data: Dashboard }) {
   function toggle() {
     void action(async () => {
       if (!status?.enabled && await Notification.requestPermission() !== "granted") {
-        throw new Error("Allow notifications for Goldsignal in your browser or device settings, then try again.");
+        throw new Error("Allow notifications for Xeniex in your browser or device settings, then try again.");
       }
       const registration = await navigator.serviceWorker.register(serviceWorkerUrl, { updateViaCache: "none" });
       if (status?.enabled) {
@@ -545,7 +545,7 @@ function Alerts({ data }: { data: Dashboard }) {
       {data.push_key && supported && <button className={status?.enabled ? undefined : "primary"} disabled={busy} onClick={toggle}>{status?.enabled ? "Disable notifications" : "Enable notifications"}</button>}
     </PanelHeading>
     <p className="muted small">{!data.push_key ? "Phone delivery requires HTTPS and Web Push keys." :
-      !supported ? "On iPhone or iPad, open Goldsignal from your Home Screen to enable notifications." :
+      !supported ? "On iPhone or iPad, open Xeniex from your Home Screen to enable notifications." :
         status?.enabled ? "Subscribed to A/A+ entry signals, trade updates, and price-in-entry-zone alerts." : "Enable notifications for A/A+ entry signals, trade updates, and price-in-entry-zone alerts."}</p>
     {status?.enabled && <div className="push-actions">
       <button disabled={busy} onClick={sendTest}>Send test notification</button>
@@ -705,7 +705,7 @@ function App({ role, signOut, expired }: {
   }
   return <div className="dashboard-shell">
     <aside className="dashboard-sidebar" id="dashboard-sidebar" data-open={menuOpen}>
-      <a className="wordmark" href={`${page}#signal`} onClick={event => select(event, null)} aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+      <a className="wordmark" href={`${page}#signal`} onClick={event => select(event, null)} aria-label="Xeniex dashboard"><span className="brand-logo" aria-hidden="true"><img src="/app-icon-192.png" alt="" /></span> Xeniex</a>
       <h2 className="nav-group-label">Menu</h2>
       <nav aria-label="Dashboard sections">
         {dashboardViews.map(([id, label]) => viewLink(id, label))}
@@ -724,7 +724,7 @@ function App({ role, signOut, expired }: {
         {menuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
       </button>
       <a className="wordmark toolbar-brand" href={`${page}#signal`} onClick={event => select(event, null)}
-        aria-label="Goldsignal dashboard"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span> Goldsignal</a>
+        aria-label="Xeniex dashboard"><span className="brand-logo" aria-hidden="true"><img src="/app-icon-192.png" alt="" /></span> Xeniex</a>
       <div className="toolbar-actions">
         <ThemeToggle />
         <a className="toolbar-icon" href="#alerts" aria-label="Notifications"><Bell size={19} aria-hidden="true" /></a>

@@ -58,7 +58,7 @@ def forward(client, request):
         return {"id": request["id"], "status": response.status_code, "body": response.text,
                 "cookie": response.headers.get("set-cookie")}
     except httpx.HTTPError:
-        return {"id": request["id"], "status": 503, "body": '{"detail":"Local Goldsignal API is unavailable"}'}
+        return {"id": request["id"], "status": 503, "body": '{"detail":"Local Xeniex API is unavailable"}'}
 
 
 def run(url, path):

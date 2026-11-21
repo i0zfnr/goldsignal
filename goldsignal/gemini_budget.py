@@ -29,11 +29,11 @@ def reserve(model):
         cooldown = state.get("cooldown", 0)
         if used >= daily_limit:
             reset = datetime.combine(today + timedelta(days=1), time.min, PACIFIC).timestamp()
-            raise GeminiPaused("Goldsignal’s Gemini daily cap reached. Calls resume at midnight Pacific.", reset)
+            raise GeminiPaused("Xeniex’s Gemini daily cap reached. Calls resume at midnight Pacific.", reset)
         if cooldown > now:
             raise GeminiPaused("Gemini is cooling down after a Google quota error.", cooldown)
         if len(recent) >= REQUESTS_PER_MINUTE:
-            raise GeminiPaused("Goldsignal’s Gemini cap reached (10 requests per minute).", recent[0] + 60)
+            raise GeminiPaused("Xeniex’s Gemini cap reached (10 requests per minute).", recent[0] + 60)
         counts[model] = used + 1
         store.put(KIND, KEY, {**state, "day": today.isoformat(), "counts": counts, "recent": [*recent, now]})
 

@@ -9,11 +9,11 @@ let available: InstallPrompt | null = null;
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
   available = event as InstallPrompt;
-  window.dispatchEvent(new Event("goldsignal-install-change"));
+  window.dispatchEvent(new Event("xeniex-install-change"));
 });
 window.addEventListener("appinstalled", () => {
   available = null;
-  window.dispatchEvent(new Event("goldsignal-install-change"));
+  window.dispatchEvent(new Event("xeniex-install-change"));
 });
 
 export function InstallButton() {
@@ -21,8 +21,8 @@ export function InstallButton() {
   useEffect(() => {
     const refresh = () => setPrompt(available);
     refresh();
-    window.addEventListener("goldsignal-install-change", refresh);
-    return () => window.removeEventListener("goldsignal-install-change", refresh);
+    window.addEventListener("xeniex-install-change", refresh);
+    return () => window.removeEventListener("xeniex-install-change", refresh);
   }, []);
   if (!prompt) return null;
   return <button type="button" onClick={() => {
